@@ -1,0 +1,21 @@
+{
+  "name": "md-management",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs",
+    "test": "node --test",
+    "check": "node --check src/app.js && node --check src/model.js && node --check src/history.js && node --check src/links.js && node --check src/database.js && node --check src/database-ui.js && node --check src/trash.js && node --check src/templates.js && node --check src/templates-ui.js && node --check src/reorder.js && node --check src/drag.js && node --check src/calendar.js && node --check src/navigation.js && node --check server.mjs",
+    "test:browser": "node qa/browser.mjs",
+    "record:demo": "node qa/record-demo.mjs",
+    "gif:demo": "node qa/render-demo.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "playwright": "1.57.0"
+  }
+}
