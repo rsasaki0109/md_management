@@ -1,4 +1,12 @@
-# folia / md_management
+<p align="center">
+  <img src="assets/hero.gif" alt="folia — 落ち着いたグリーンのワークスペースで、文章入力とチェックリストの完了を紹介するアニメーション" width="1200" />
+</p>
+
+<h1 align="center">folia</h1>
+<p align="center"><strong>小さなメモから、大きなアイデアへ。</strong><br />Notion ライクな、あなたのための Markdown ワークスペース。</p>
+<p align="center">Local first · Block editor · Markdown in & out</p>
+
+> ヒーロー GIF は UI を再現した紹介アニメーションです。実際の操作録画ではありません。
 
 Notion のようにページを階層で整理し、ブロック単位で編集できる個人用 Markdown ワークスペースの初期版です。依存パッケージ不要の JavaScript アプリです。
 
@@ -37,3 +45,14 @@ npm test
 ```
 
 `src/model.js` がページと Markdown のデータ処理、`src/app.js` が UI、`src/style.css` が画面スタイルです。開発サーバーはローカル検証用です。
+
+## ヒーロー GIF の再生成
+
+`assets/hero.gif` は 1200 × 760 のループアニメーションです。生成スクリプトも同梱しています。通常のアプリ起動に Python は不要です。
+
+```sh
+python -m pip install Pillow
+python scripts/generate-hero.py
+```
+
+生成には DejaVu Sans フォントを使用します（Linux: `/usr/share/fonts/truetype/dejavu`）。
