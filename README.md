@@ -1,14 +1,16 @@
 <p align="center">
-  <img src="assets/hero.gif" alt="folia — 落ち着いたグリーンのワークスペースで、文章入力とチェックリストの完了を紹介するアニメーション" width="1200" />
+  <img src="assets/demo.gif" alt="folia の実画面：テンプレートからページを作り、タスクをボード・テーブル・カレンダーで管理するデモ" width="1200" />
 </p>
 
 <h1 align="center">folia</h1>
 <p align="center"><strong>小さなメモから、大きなアイデアへ。</strong><br />Notion ライクな、あなたのための Markdown ワークスペース。</p>
 <p align="center">Local first · Block editor · Markdown in & out</p>
 
-> ヒーロー GIF は UI を再現した紹介アニメーションです。実際の操作録画ではありません。
+> **v0.1.0** — 自動テスト 67 件・Chromium 実画面 17 シナリオを確認済み。[受け入れ結果](docs/v0.1-acceptance.md) / [リリースノート](docs/v0.1-release.md)
+>
+> 上の GIF は実際のアプリを Chromium で自動操作してキャプチャしたものです。
 
-Notion のようにページを階層で整理し、ブロック単位で編集できる個人用 Markdown ワークスペースの初期版です。依存パッケージ不要の JavaScript アプリです。
+Notion のようにページを階層で整理し、ブロック単位で編集できる個人用 Markdown ワークスペースの初期版です。アプリの起動に依存パッケージは不要です。開発・実画面テスト用に Playwright を使用します。
 
 ## 起動
 
@@ -18,7 +20,7 @@ Node.js 22 以上を使用します。
 npm start
 ```
 
-http://localhost:3000 を開きます。`PORT=8080 npm start` でポートを変更できます。
+http://127.0.0.1:3000 を開きます。`PORT=8080 npm start` でポートを変更できます。既定ではローカル端末からのみアクセスできます。別の端末から確認する場合は `HOST=0.0.0.0 npm start` を使います。
 
 ## できること
 
@@ -153,15 +155,25 @@ npm run check
 npm test
 ```
 
-`src/model.js` がページと Markdown のデータ処理、`src/app.js` が UI、`src/style.css` が画面スタイルです。開発サーバーはローカル検証用です。
-
-## ヒーロー GIF の再生成
-
-`assets/hero.gif` は 1200 × 760 のループアニメーションです。生成スクリプトも同梱しています。通常のアプリ起動に Python は不要です。
+実画面テストは、別のターミナルで `npm start` を起動してから実行します。
 
 ```sh
-python -m pip install Pillow
-python scripts/generate-hero.py
+npm ci
+npx playwright install chromium
+npm run test:browser
 ```
 
-生成には DejaVu Sans フォントを使用します（Linux: `/usr/share/fonts/truetype/dejavu`）。
+画面キャプチャと結果は `artifacts/` に保存します。`QA_URL` で検証先、`CHROMIUM_PATH` で既存 Chromium の実行ファイルを指定できます。CI でも単体・HTTP・実画面テストを実行します。検証済みの範囲と未確認事項は [v0.1 受け入れ結果](docs/v0.1-acceptance.md) にまとめています。
+
+`src/model.js` がページと Markdown のデータ処理、`src/app.js` が UI、`src/style.css` が画面スタイルです。HTTP サーバーはローカル利用用です。
+
+## 実画面 GIF の再生成
+
+`assets/demo.gif` は実際の Chromium でテンプレート作成、ボードの列移動、ビュー切り替え、ページリンクを操作したキャプチャです。1080 × 692、約 11.5 秒のループです。起動済みのアプリ、Playwright と Chromium、GIF 変換用の FFmpeg を使用します。
+
+```sh
+npm run record:demo
+npm run gif:demo
+```
+
+通常のアプリ起動に Playwright や FFmpeg は不要です。以前のイラスト版 GIF と生成スクリプトも履歴用に残しています。

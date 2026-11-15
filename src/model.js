@@ -5,14 +5,15 @@ export const block = (type='text',text='',checked=false) => ({id:uid(),type,text
 export function page(title='無題',parentId=null) {return {id:uid(),title,icon:'📄',parentId,favorite:false,updatedAt:new Date().toISOString(),blocks:[block()]};}
 export function descendants(pages,id) {const ids=new Set([id]); let size; do {size=ids.size; for(const p of pages) if(ids.has(p.parentId)) ids.add(p.id);} while(size!==ids.size); return ids;}
 export function canMove(pages,id,parentId) {return parentId===null || (pages.some(p=>p.id===parentId) && !descendants(pages,id).has(parentId));}
-export function toMarkdown(p) {return '# '+p.title+'\n\n'+p.blocks.map(b=>({h1:'# ',h2:'## ',bullet:'- ',todo:b.checked?'- [x] ':'- [ ] ',quote:'> '}[b.type]??'')+(b.type==='divider'?'---':b.type==='code'?'```\n'+b.text+'\n```':b.text)).join('\n\n')+(p.database?'\n\n'+databaseMarkdown(p.database):'')+'\n';}
+function fencedCode(text){const lengths=[...(text.matchAll(/^`+/gm))].map(m=>m[0].length);const fence='`'.repeat(Math.max(3,...lengths.map(n=>n+1)));return fence+'\n'+text+'\n'+fence;}
+export function toMarkdown(p) {return '# '+p.title+'\n\n'+p.blocks.map(b=>({h1:'# ',h2:'## ',bullet:'- ',todo:b.checked?'- [x] ':'- [ ] ',quote:'> '}[b.type]??'')+(b.type==='divider'?'---':b.type==='code'?fencedCode(b.text):b.text)).join('\n\n')+(p.database?'\n\n'+databaseMarkdown(p.database):'')+'\n';}
 export function fromMarkdown(source,title='インポートしたページ') {
   const p=page(title); p.blocks=[]; let code=null;
   const lines=source.replace(/\r\n?/g,'\n').split('\n');
   for(let i=0;i<lines.length;i++) {
     const line=lines[i];
-    if(line.startsWith('```')) {if(code!==null) {p.blocks.push(block('code',code.join('\n')));code=null;} else code=[]; continue;}
-    if(code!==null) {code.push(line);continue;}
+    if(code!==null){const closing=line.match(/^(`{3,})\s*$/);if(closing&&closing[1].length>=code.fence){p.blocks.push(block('code',code.lines.join('\n')));code=null;}else code.lines.push(line);continue;}
+    const opening=line.match(/^(`{3,})([^`]*)$/);if(opening){code={fence:opening[1].length,lines:[]};continue;}
     const table=!p.database?parseDatabaseTable(lines,i):null;
     if(table){p.database=table.database;i=table.end-1;continue;}
     if(!line.trim()) continue;
@@ -24,7 +25,7 @@ export function fromMarkdown(source,title='インポートしたページ') {
     else if(line.startsWith('> ')) p.blocks.push(block('quote',line.slice(2)));
     else p.blocks.push(block('text',line));
   }
-  if(code!==null) p.blocks.push(block('code',code.join('\n')));
+  if(code!==null) p.blocks.push(block('code',code.lines.join('\n')));
   if(p.blocks[0]?.text==='' && p.blocks.length>1) p.blocks.shift();
   if(!p.blocks.length) p.blocks=[block()]; return p;
 }
