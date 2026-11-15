@@ -1,3 +1,4 @@
+import {showTemplatePicker} from './templates-ui.js';
 import {moveToTrash,restoreFromTrash,permanentlyDelete,trashCount} from './trash.js';
 import {createDatabase,databaseSearch} from './database.js';
 import {renderDatabase} from './database-ui.js';
@@ -39,7 +40,10 @@ function travel(direction){
  save(null,false);render();restoreFocus(snapshot.focus);toast(direction<0?'元に戻しました':'やり直しました');
 }
 function open(id){const p=state.pages.find(p=>p.id===id);if(!p)return;active=p;state.activeId=id;save();render();$('#sidebar').classList.remove('mobile-open');}
-function create(parentId=null){const p=page('無題',parentId);state.pages.push(p);if(parentId)collapsed.delete(parentId);open(p.id);$('#page-title').focus();document.execCommand('selectAll');}
+function create(parentId=null){closeMenu();showTemplatePicker({dialog:$('#template-dialog'),pages:state.pages,parentId,onCreate:p=>{
+ if(p.parentId&&!state.pages.some(parent=>parent.id===p.parentId))throw Error('作成先のページが見つかりません');
+ state.pages.push(p);let parent=state.pages.find(parent=>parent.id===p.parentId);while(parent){collapsed.delete(parent.id);parent=state.pages.find(p=>p.id===parent.parentId);}open(p.id);requestAnimationFrame(()=>{$('#page-title').focus();document.execCommand('selectAll');});
+}});}
 function renderTree(){const root=$('#tree');root.replaceChildren();
  const favorites=state.pages.filter(p=>p.favorite);if(favorites.length){root.append(el('div','mini-label','お気に入り'));for(const p of favorites)root.append(button(p.icon+'  '+p.title,()=>open(p.id),'favorite-link '+(p.id===active.id?'selected':'')));root.append(el('div','mini-label','すべてのページ'));}
  function branch(parent,depth=0){for(const p of state.pages.filter(p=>p.parentId===parent)){const row=el('div','tree-row '+(p.id===active.id?'selected':''));row.style.paddingLeft=(10+depth*14)+'px';const children=state.pages.some(c=>c.parentId===p.id);const arrow=button(children?(collapsed.has(p.id)?'›':'⌄'):'·',()=>{collapsed.has(p.id)?collapsed.delete(p.id):collapsed.add(p.id);renderTree();},'tree-arrow');arrow.setAttribute('aria-label',p.title+' の子ページを開閉');const link=button(p.icon+'  '+(p.title||'無題'),()=>open(p.id),'tree-link');const add=button('＋',()=>create(p.id),'tree-add');add.setAttribute('aria-label',p.title+' に子ページを追加');row.append(arrow,link,add);root.append(row);if(!collapsed.has(p.id))branch(p.id,depth+1);}}
