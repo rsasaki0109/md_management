@@ -1,3 +1,4 @@
+import {resolvePage,pageUrl,pageAncestors,createPageRouter} from './navigation.js';
 import {reorderItems} from './reorder.js';
 import {createDragScope,dropPosition,clearDropHints} from './drag.js';
 import {showTemplatePicker} from './templates-ui.js';
@@ -11,6 +12,13 @@ const $=s=>document.querySelector(s), KEY='folia-workspace-v1';
 let state,readFailed=false;
 try {const saved=localStorage.getItem(KEY);state=saved?validateBackup(JSON.parse(saved)):initial();}catch{state=initial();readFailed=true;}
 let active=state.pages.find(p=>p.id===state.activeId)||state.pages[0], collapsed=new Set(), menu=null,saveFailed=false,linkPicker=null;
+const initialRoute=resolvePage(state.pages,window.location.hash,state.activeId);active=initialRoute.page;state.activeId=active.id;
+const router=createPageRouter(window,hash=>{
+ const route=resolvePage(state.pages,hash,active.id);
+ for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close('cancel');
+ open(route.page.id,{replace:true});if(route.missing)toast('リンク先が見つかりません。削除済み、またはこのブラウザにないページです。');
+});
+router.write(active.id,{replace:true});
 function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;}
 function button(text,fn,cls=''){const b=el('button',cls,text);b.type='button';b.onclick=fn;return b;}
 function toast(text){$('#toast').textContent=text;$('#toast').classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').classList.remove('show'),3500);}
@@ -35,13 +43,13 @@ function restoreFocus(focus){
  });
 }
 function updateHistoryButtons(){$('#undo').disabled=!history.canUndo;$('#redo').disabled=!history.canRedo;}
-function save(group=null,record=true){state.activeId=active.id;active.updatedAt=new Date().toISOString();if(record)history.record(state,{group,focus:editorFocus()});updateHistoryButtons();try{if(readFailed) throw Error();localStorage.setItem(KEY,JSON.stringify(state));saveFailed=false;$('#save-status').textContent='✓ 保存済み';}catch{saveFailed=true;$('#save-status').textContent='未保存 — バックアップしてください';}}
+function save(group=null,record=true){document.title=(active.title||'無題')+' — folia';state.activeId=active.id;active.updatedAt=new Date().toISOString();if(record)history.record(state,{group,focus:editorFocus()});updateHistoryButtons();try{if(readFailed) throw Error();localStorage.setItem(KEY,JSON.stringify(state));saveFailed=false;$('#save-status').textContent='✓ 保存済み';}catch{saveFailed=true;$('#save-status').textContent='未保存 — バックアップしてください';}}
 function travel(direction){
  const snapshot=history.step(direction);if(!snapshot)return;
  state=snapshot.value;active=state.pages.find(p=>p.id===state.activeId)||state.pages[0];
- save(null,false);render();restoreFocus(snapshot.focus);toast(direction<0?'元に戻しました':'やり直しました');
+ router.write(active.id,{replace:true});save(null,false);render();restoreFocus(snapshot.focus);toast(direction<0?'元に戻しました':'やり直しました');
 }
-function open(id){const p=state.pages.find(p=>p.id===id);if(!p)return;active=p;state.activeId=id;save();render();$('#sidebar').classList.remove('mobile-open');}
+function open(id,{replace=false}={}){const p=state.pages.find(p=>p.id===id);if(!p)return;active=p;state.activeId=id;for(const parentId of pageAncestors(state.pages,id))collapsed.delete(parentId);router.write(id,{replace});save();render();$('#sidebar').classList.remove('mobile-open');window.scrollTo(0,0);}
 function create(parentId=null){closeMenu();showTemplatePicker({dialog:$('#template-dialog'),pages:state.pages,parentId,onCreate:p=>{
  if(p.parentId&&!state.pages.some(parent=>parent.id===p.parentId))throw Error('作成先のページが見つかりません');
  state.pages.push(p);let parent=state.pages.find(parent=>parent.id===p.parentId);while(parent){collapsed.delete(parent.id);parent=state.pages.find(p=>p.id===parent.parentId);}open(p.id);requestAnimationFrame(()=>{$('#page-title').focus();document.execCommand('selectAll');});
@@ -51,7 +59,7 @@ function renderTree(){const root=$('#tree');root.replaceChildren();
  function branch(parent,depth=0){for(const p of state.pages.filter(p=>p.parentId===parent)){const row=el('div','tree-row '+(p.id===active.id?'selected':''));row.style.paddingLeft=(10+depth*14)+'px';const children=state.pages.some(c=>c.parentId===p.id);const arrow=button(children?(collapsed.has(p.id)?'›':'⌄'):'·',()=>{collapsed.has(p.id)?collapsed.delete(p.id):collapsed.add(p.id);renderTree();},'tree-arrow');arrow.setAttribute('aria-label',p.title+' の子ページを開閉');const link=button(p.icon+'  '+(p.title||'無題'),()=>open(p.id),'tree-link');const add=button('＋',()=>create(p.id),'tree-add');add.setAttribute('aria-label',p.title+' に子ページを追加');row.append(arrow,link,add);root.append(row);if(!collapsed.has(p.id))branch(p.id,depth+1);}}
  branch(null);
 }
-function render(){closeMenu();renderTree();$('#trash-count').textContent=trashCount(state)||'';const crumbs=[];let p=active;while(p){crumbs.unshift(p);p=state.pages.find(x=>x.id===p.parentId);}$('#breadcrumb').replaceChildren();for(const [i,p] of crumbs.entries()){if(i)$('#breadcrumb').append(el('span','crumb-separator','/'));$('#breadcrumb').append(button(p.icon+' '+(p.title||'無題'),()=>open(p.id),'crumb'));}
+function render(){document.title=(active.title||'無題')+' — folia';for(const id of pageAncestors(state.pages,active.id))collapsed.delete(id);closeMenu();renderTree();$('#trash-count').textContent=trashCount(state)||'';const crumbs=[];let p=active;while(p){crumbs.unshift(p);p=state.pages.find(x=>x.id===p.parentId);}$('#breadcrumb').replaceChildren();for(const [i,p] of crumbs.entries()){if(i)$('#breadcrumb').append(el('span','crumb-separator','/'));$('#breadcrumb').append(button(p.icon+' '+(p.title||'無題'),()=>open(p.id),'crumb'));}
  $('#favorite').textContent=active.favorite?'★':'☆';$('#favorite').setAttribute('aria-pressed',String(active.favorite));
  const main=$('#main');main.replaceChildren();const cover=el('div','cover');cover.append(el('span','cover-note','A LITTLE SPACE FOR BIG IDEAS'),el('div','cover-orbit'),el('div','cover-sun'));main.append(cover);
  const content=el('article','document'+(active.database?' document-with-database':''));const icon=button(active.icon,changeIcon,'page-icon');icon.setAttribute('aria-label','ページアイコンを変更');content.append(icon);const meta=el('div','document-meta');meta.append(el('span','eyebrow','YOUR PRIVATE SPACE'),button('＋ 子ページ',()=>create(active.id),'subtle'));content.append(meta);
@@ -124,7 +132,12 @@ function blockMenu(b,anchor){const m=showMenu(anchor);m.dataset.block=b.id;m.app
 function changeIcon(e){const m=showMenu(e.currentTarget);const grid=el('div','icon-grid');for(const icon of ['📄','🌱','💡','📚','🗂️','📝','🎯','🚀','☕','🎨','🔖','🧭'])grid.append(button(icon,()=>{active.icon=icon;save();render();}));m.append(grid);}
 async function action(title,body,label='保存'){closeMenu();$('#action-title').textContent=title;$('#action-body').replaceChildren(body);$('#action-confirm').textContent=label;const d=$('#action-dialog');d.returnValue='cancel';d.showModal();return new Promise(resolve=>{d.addEventListener('close',()=>resolve(d.returnValue==='confirm'),{once:true});});}
 $('#favorite').onclick=()=>{active.favorite=!active.favorite;save();render();};
-$('#page-menu').onclick=e=>{const m=showMenu(e.currentTarget);m.append(button('ページを複製',()=>{const p=structuredClone(active);p.id=crypto.randomUUID();p.title+=' のコピー';p.blocks=p.blocks.map(b=>({...b,id:crypto.randomUUID()}));if(p.database)p.database.rows=p.database.rows.map(r=>({...r,id:crypto.randomUUID()}));state.pages.push(p);open(p.id);}));m.append(button('ページを移動',async()=>{const select=el('select');select.setAttribute('aria-label','移動先');const option=el('option','','ワークスペース直下');option.value='';select.append(option);for(const p of state.pages.filter(p=>canMove(state.pages,active.id,p.id))){const o=el('option','',p.icon+' '+p.title);o.value=p.id;select.append(o);}select.value=active.parentId||'';if(await action('ページの移動先',select,'移動')){active.parentId=select.value||null;save();render();}}));m.append(button('ゴミ箱に移動',()=>{const entry=moveToTrash(state,active.id);open(state.activeId);toast(entry.pages.length+' ページをゴミ箱に移動しました');},'danger'));};
+async function copyPageLink(){
+ closeMenu();const url=pageUrl(window.location.href,active.id);
+ try{if(!navigator.clipboard?.writeText)throw Error();await navigator.clipboard.writeText(url);toast('ページリンクをコピーしました');}
+ catch{const body=el('div');body.append(el('p','','この URL をコピーしてください。同じブラウザと保存先のページを開くリンクです。'));const input=el('input','copy-page-url');input.readOnly=true;input.value=url;input.setAttribute('aria-label','ページ URL');body.append(input);action('ページリンク',body,'閉じる');requestAnimationFrame(()=>{input.focus();input.select();});}
+}
+$('#page-menu').onclick=e=>{const m=showMenu(e.currentTarget);m.append(button('ページリンクをコピー',copyPageLink));m.append(button('ページを複製',()=>{const p=structuredClone(active);p.id=crypto.randomUUID();p.title+=' のコピー';p.blocks=p.blocks.map(b=>({...b,id:crypto.randomUUID()}));if(p.database)p.database.rows=p.database.rows.map(r=>({...r,id:crypto.randomUUID()}));state.pages.push(p);open(p.id);}));m.append(button('ページを移動',async()=>{const select=el('select');select.setAttribute('aria-label','移動先');const option=el('option','','ワークスペース直下');option.value='';select.append(option);for(const p of state.pages.filter(p=>canMove(state.pages,active.id,p.id))){const o=el('option','',p.icon+' '+p.title);o.value=p.id;select.append(o);}select.value=active.parentId||'';if(await action('ページの移動先',select,'移動')){active.parentId=select.value||null;save();render();}}));m.append(button('ゴミ箱に移動',()=>{const entry=moveToTrash(state,active.id);open(state.activeId);toast(entry.pages.length+' ページをゴミ箱に移動しました');},'danger'));};
 function renderTrash(){
  const list=$('#trash-list');list.replaceChildren();const query=$('#trash-search').value.trim().toLocaleLowerCase();
  const entries=(state.trash||[]).filter(entry=>entry.pages.some(p=>p.title.toLocaleLowerCase().includes(query)));
@@ -143,12 +156,13 @@ async function purgeTrash(entry=null){
 }
 $('#trash-open').onclick=()=>{closeMenu();$('#trash-search').value='';renderTrash();$('#trash-dialog').showModal();$('#trash-search').focus();};
 $('#trash-close').onclick=()=>$('#trash-dialog').close();$('#trash-search').oninput=renderTrash;$('#trash-empty').onclick=()=>purgeTrash();
+$('.brand').onclick=e=>{e.preventDefault();open(state.pages.find(p=>p.parentId===null).id);};
 $('#new-page').onclick=()=>create();$('#add-root').onclick=()=>create();$('#home').onclick=()=>open(state.pages.find(p=>p.parentId===null).id);$('#toggle-sidebar').onclick=()=>{if(innerWidth<=760)$('#sidebar').classList.toggle('mobile-open');else document.body.classList.toggle('sidebar-hidden');};
 function download(name,text,type){const url=URL.createObjectURL(new Blob([text],{type}));const a=el('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 $('#export').onclick=()=>download((active.title||'無題').replace(/[\\/:*?"<>|]/g,'_')+'.md',toMarkdown(active),'text/markdown;charset=utf-8');
 $('#backup').onclick=()=>download('folia-backup-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state,null,2),'application/json');
 $('#import').onclick=()=>$('#file').click();$('#file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>5*1024*1024)throw Error('5 MB 以下のファイルを選んでください');const p=fromMarkdown(await f.text(),f.name.replace(/\.(md|markdown)$/i,''));state.pages.push(p);open(p.id);toast('Markdown を読み込みました');}catch(err){toast(err.message);}e.target.value='';};
-$('#restore').onclick=()=>$('#backup-file').click();$('#backup-file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>20*1024*1024)throw Error('20 MB 以下のファイルを選んでください');const data=validateBackup(JSON.parse(await f.text()));if(await action('バックアップを復元',el('p','',`${data.pages.length} ページを読み込み、現在の内容を置き換えます。`),'復元')){state=data;readFailed=false;open(data.activeId||data.pages[0].id);toast('復元しました');}}catch(err){toast('復元できませんでした: '+err.message);}e.target.value='';};
+$('#restore').onclick=()=>$('#backup-file').click();$('#backup-file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>20*1024*1024)throw Error('20 MB 以下のファイルを選んでください');const data=validateBackup(JSON.parse(await f.text()));if(await action('バックアップを復元',el('p','',`${data.pages.length} ページを読み込み、現在の内容を置き換えます。`),'復元')){state=data;readFailed=false;open(data.pages.find(p=>p.id===data.activeId)?.id||data.pages[0].id,{replace:true});toast('復元しました');}}catch(err){toast('復元できませんでした: '+err.message);}e.target.value='';};
 function search(){const q=$('#search-input').value.trim().toLowerCase();const results=$('#search-results');results.replaceChildren();for(const p of state.pages.filter(p=>!q||(p.title+' '+p.blocks.map(b=>b.text).join(' ')+' '+databaseSearch(p.database)).toLowerCase().includes(q))){const b=button('',()=>{$('#search-dialog').close();open(p.id);},'search-result');b.append(el('span','',p.icon+' '+p.title),el('small','',(p.blocks.map(b=>b.text).join(' ')+' '+databaseSearch(p.database)).slice(0,100)));results.append(b);}if(!results.children.length)results.append(el('p','empty','一致するページがありません'));}
 function openSearch(){$('#search-dialog').showModal();$('#search-input').value='';search();$('#search-input').focus();}
 $('#search-open').onclick=openSearch;$('#search-input').oninput=search;$('#search-close').onclick=()=>$('#search-dialog').close();$('#undo').onclick=()=>travel(-1);$('#redo').onclick=()=>travel(1);
@@ -164,4 +178,4 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('pointerdown',e=>{if(menu&&!menu.contains(e.target)&&!e.target.closest('.block-handle'))closeMenu();});for(const d of document.querySelectorAll('dialog'))d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close('cancel');}});
 window.addEventListener('beforeunload',e=>{if(saveFailed){e.preventDefault();e.returnValue='';}});
 window.addEventListener('storage',e=>{if(e.key===KEY){readFailed=true;saveFailed=true;$('#save-status').textContent='別タブで変更されました。バックアップ後に再読み込み';toast('競合を防ぐため保存を停止しました。バックアップ後に再読み込みしてください。');}});
-render();updateHistoryButtons();if(readFailed){saveFailed=true;$('#save-status').textContent='保存データを読み込めませんでした';toast('元のデータは上書きしていません。バックアップを復元してください。');}
+render();updateHistoryButtons();router.start();if(initialRoute.missing&&!readFailed)toast('リンク先が見つかりません。削除済み、またはこのブラウザにないページです。');if(readFailed){saveFailed=true;$('#save-status').textContent='保存データを読み込めませんでした';toast('元のデータは上書きしていません。バックアップを復元してください。');}
