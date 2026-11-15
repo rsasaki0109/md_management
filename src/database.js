@@ -8,7 +8,7 @@ export function validDate(value){
  const date=new Date(value+'T00:00:00Z');return !Number.isNaN(+date)&&date.toISOString().slice(0,10)===value;
 }
 export function validateDatabase(db){
- if(!db||!['table','board'].includes(db.view)||!Array.isArray(db.rows))throw Error('データベースの形式が正しくありません');
+ if(!db||!['table','board','calendar'].includes(db.view)||!Array.isArray(db.rows))throw Error('データベースの形式が正しくありません');
  const ids=new Set();for(const row of db.rows){
   if(!row||typeof row.id!=='string'||!row.id||ids.has(row.id)||typeof row.title!=='string'||!Object.hasOwn(statuses,row.status)||!Object.hasOwn(priorities,row.priority)||typeof row.due!=='string'||!validDate(row.due))throw Error('タスクの形式が正しくありません');
   ids.add(row.id);
