@@ -1,15 +1,20 @@
+import {validateDatabase,databaseMarkdown,parseDatabaseTable} from './database.js';
 export const types = {text:'テキスト',h1:'見出し 1',h2:'見出し 2',bullet:'箇条書き',todo:'チェックリスト',quote:'引用',code:'コード',divider:'区切り線'};
 export const uid = () => crypto.randomUUID();
 export const block = (type='text',text='',checked=false) => ({id:uid(),type,text,checked});
 export function page(title='無題',parentId=null) {return {id:uid(),title,icon:'📄',parentId,favorite:false,updatedAt:new Date().toISOString(),blocks:[block()]};}
 export function descendants(pages,id) {const ids=new Set([id]); let size; do {size=ids.size; for(const p of pages) if(ids.has(p.parentId)) ids.add(p.id);} while(size!==ids.size); return ids;}
 export function canMove(pages,id,parentId) {return parentId===null || (pages.some(p=>p.id===parentId) && !descendants(pages,id).has(parentId));}
-export function toMarkdown(p) {return '# '+p.title+'\n\n'+p.blocks.map(b=>({h1:'# ',h2:'## ',bullet:'- ',todo:b.checked?'- [x] ':'- [ ] ',quote:'> '}[b.type]??'')+(b.type==='divider'?'---':b.type==='code'?'```\n'+b.text+'\n```':b.text)).join('\n\n')+'\n';}
+export function toMarkdown(p) {return '# '+p.title+'\n\n'+p.blocks.map(b=>({h1:'# ',h2:'## ',bullet:'- ',todo:b.checked?'- [x] ':'- [ ] ',quote:'> '}[b.type]??'')+(b.type==='divider'?'---':b.type==='code'?'```\n'+b.text+'\n```':b.text)).join('\n\n')+(p.database?'\n\n'+databaseMarkdown(p.database):'')+'\n';}
 export function fromMarkdown(source,title='インポートしたページ') {
   const p=page(title); p.blocks=[]; let code=null;
-  for(const line of source.replace(/\r\n?/g,'\n').split('\n')) {
+  const lines=source.replace(/\r\n?/g,'\n').split('\n');
+  for(let i=0;i<lines.length;i++) {
+    const line=lines[i];
     if(line.startsWith('```')) {if(code!==null) {p.blocks.push(block('code',code.join('\n')));code=null;} else code=[]; continue;}
     if(code!==null) {code.push(line);continue;}
+    const table=!p.database?parseDatabaseTable(lines,i):null;
+    if(table){p.database=table.database;i=table.end-1;continue;}
     if(!line.trim()) continue;
     if(!p.blocks.length && line.startsWith('# ') && p.title===title) {p.title=line.slice(2);p.blocks.push(block('text',''));continue;}
     let m; if((m=line.match(/^- \[([ xX])\] (.*)$/))) p.blocks.push(block('todo',m[2],m[1].toLowerCase()==='x'));
@@ -29,6 +34,7 @@ export function validateBackup(data) {
   for(const p of data.pages) {
     if(typeof p.id!=='string'||ids.has(p.id)||typeof p.title!=='string'||typeof p.icon!=='string'||typeof p.favorite!=='boolean'||!Array.isArray(p.blocks)||!p.blocks.length) throw Error('ページの形式が正しくありません');
     ids.add(p.id);
+    if(p.database!==undefined)validateDatabase(p.database);
     for(const b of p.blocks) {if(typeof b.id!=='string'||blockIds.has(b.id)||!Object.hasOwn(types,b.type)||typeof b.text!=='string'||typeof b.checked!=='boolean') throw Error('ブロックの形式が正しくありません');blockIds.add(b.id);}
   }
   for(const p of data.pages) {if(p.parentId!==null && !ids.has(p.parentId)) throw Error('親ページが見つかりません'); let parent=p; const seen=new Set(); while(parent) {if(seen.has(parent.id)) throw Error('ページ階層が循環しています');seen.add(parent.id);parent=data.pages.find(x=>x.id===parent.parentId);}}
