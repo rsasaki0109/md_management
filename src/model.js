@@ -38,6 +38,20 @@ export function validateBackup(data) {
     for(const b of p.blocks) {if(typeof b.id!=='string'||blockIds.has(b.id)||!Object.hasOwn(types,b.type)||typeof b.text!=='string'||typeof b.checked!=='boolean') throw Error('ブロックの形式が正しくありません');blockIds.add(b.id);}
   }
   for(const p of data.pages) {if(p.parentId!==null && !ids.has(p.parentId)) throw Error('親ページが見つかりません'); let parent=p; const seen=new Set(); while(parent) {if(seen.has(parent.id)) throw Error('ページ階層が循環しています');seen.add(parent.id);parent=data.pages.find(x=>x.id===parent.parentId);}}
+  if(data.trash!==undefined){
+    if(!Array.isArray(data.trash))throw Error('ゴミ箱の形式が正しくありません');
+    const entryIds=new Set();
+    for(const entry of data.trash){
+      if(!entry||typeof entry.id!=='string'||!entry.id||entryIds.has(entry.id)||typeof entry.rootId!=='string'||!(entry.originalParentId===null||typeof entry.originalParentId==='string')||typeof entry.deletedAt!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(entry.deletedAt)||Number.isNaN(Date.parse(entry.deletedAt))||new Date(entry.deletedAt).toISOString()!==entry.deletedAt)throw Error('ゴミ箱の項目が正しくありません');
+      entryIds.add(entry.id);validateBackup({version:1,pages:entry.pages});
+      const root=entry.pages.find(p=>p.id===entry.rootId);
+      if(!root||root.parentId!==null||descendants(entry.pages,root.id).size!==entry.pages.length)throw Error('ゴミ箱の階層が正しくありません');
+      for(const p of entry.pages){
+        if(ids.has(p.id))throw Error('ページ ID が重複しています');ids.add(p.id);
+        for(const b of p.blocks){if(blockIds.has(b.id))throw Error('ブロック ID が重複しています');blockIds.add(b.id);}
+      }
+    }
+  }
   return data;
 }
 export function initial() {

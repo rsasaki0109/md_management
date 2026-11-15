@@ -2,10 +2,11 @@
 export class History {
   constructor(value, {limit=50, delay=800}={}) {
     this.limit=Math.max(2,limit); this.delay=delay;
-    this.entries=[this.snapshot(value)]; this.index=0; this.group=null; this.time=0;
+    this.reset(value);
   }
+  reset(value){this.entries=[this.snapshot(value)];this.index=0;this.group=null;this.time=0;}
   snapshot(value, focus=null) {
-    return {value:structuredClone(value),focus:structuredClone(focus),key:JSON.stringify(value.pages.map(({updatedAt,...page})=>page))};
+    return {value:structuredClone(value),focus:structuredClone(focus),key:JSON.stringify({pages:value.pages.map(({updatedAt,...page})=>page),trash:value.trash||[]})};
   }
   record(value, {group=null, now=Date.now(), focus=null}={}) {
     const next=this.snapshot(value,focus);
