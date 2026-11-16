@@ -1,3 +1,4 @@
+import {outlineEntries} from './outline.js';
 import {setupOffline} from './offline.js';
 import {resolvePage,pageUrl,pageAncestors,createPageRouter} from './navigation.js';
 import {reorderItems} from './reorder.js';
@@ -24,6 +25,8 @@ function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className
 function button(text,fn,cls=''){const b=el('button',cls,text);b.type='button';b.onclick=fn;return b;}
 function toast(text){$('#toast').textContent=text;$('#toast').classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').classList.remove('show'),3500);}
 const history=new History(state);
+const outlineOpen=new Map();
+function renderOutline(){const outline=$('#page-outline');if(!outline)return;const entries=outlineEntries(active.blocks);outline.hidden=!entries.length;outline.querySelector('summary').textContent='このページの目次 · '+entries.length;const list=outline.querySelector('ol');list.replaceChildren();for(const entry of entries){const item=el('li','outline-level-'+entry.level),link=button(entry.title,()=>{const target=document.getElementById('edit-'+entry.id);if(!target)return;restoreFocus({id:target.id,offset:0});target.scrollIntoView({block:'start'});},'outline-link');link.setAttribute('aria-label','見出し '+entry.level+': '+entry.title);item.append(link);list.append(item);}}
 function editorFocus(){
  const target=document.activeElement;
  if(target?.matches('.task-title'))return {id:target.id,offset:target.selectionStart};
@@ -44,7 +47,7 @@ function restoreFocus(focus){
  });
 }
 function updateHistoryButtons(){$('#undo').disabled=!history.canUndo;$('#redo').disabled=!history.canRedo;}
-function save(group=null,record=true){document.title=(active.title||'無題')+' — folia';state.activeId=active.id;active.updatedAt=new Date().toISOString();if(record)history.record(state,{group,focus:editorFocus()});updateHistoryButtons();try{if(readFailed) throw Error();localStorage.setItem(KEY,JSON.stringify(state));saveFailed=false;$('#save-status').textContent='✓ 保存済み';}catch{saveFailed=true;$('#save-status').textContent='未保存 — バックアップしてください';}}
+function save(group=null,record=true){document.title=(active.title||'無題')+' — folia';state.activeId=active.id;active.updatedAt=new Date().toISOString();if(record)history.record(state,{group,focus:editorFocus()});updateHistoryButtons();renderOutline();try{if(readFailed) throw Error();localStorage.setItem(KEY,JSON.stringify(state));saveFailed=false;$('#save-status').textContent='✓ 保存済み';}catch{saveFailed=true;$('#save-status').textContent='未保存 — バックアップしてください';}}
 function travel(direction){
  const snapshot=history.step(direction);if(!snapshot)return;
  state=snapshot.value;active=state.pages.find(p=>p.id===state.activeId)||state.pages[0];
@@ -65,6 +68,7 @@ function render(){document.title=(active.title||'無題')+' — folia';for(const
  const main=$('#main');main.replaceChildren();const cover=el('div','cover');cover.append(el('span','cover-note','A LITTLE SPACE FOR BIG IDEAS'),el('div','cover-orbit'),el('div','cover-sun'));main.append(cover);
  const content=el('article','document'+(active.database?' document-with-database':''));const icon=button(active.icon,changeIcon,'page-icon');icon.setAttribute('aria-label','ページアイコンを変更');content.append(icon);const meta=el('div','document-meta');meta.append(el('span','eyebrow','YOUR PRIVATE SPACE'),button('＋ 子ページ',()=>create(active.id),'subtle'));content.append(meta);
  const title=el('h1','page-title',active.title);title.id='page-title';title.contentEditable='true';title.dataset.placeholder='無題';title.setAttribute('aria-label','ページタイトル');title.oninput=e=>{active.title=title.textContent.replace(/\n/g,'');save('title:'+active.id,!e.isComposing);renderTree();};title.onkeydown=e=>{if(e.isComposing)return;if(e.key==='Enter'){e.preventDefault();focusBlock(active.blocks[0].id);}};title.oncompositionend=()=>{active.title=title.textContent.replace(/\n/g,'');save('title:'+active.id);renderTree();};title.onblur=()=>{if(!active.title.trim()){active.title='無題';title.textContent=active.title;save();renderTree();}};content.append(title);
+ const outline=el('details','page-outline');outline.id='page-outline';outline.open=outlineOpen.get(active.id)||false;const outlinePageId=active.id;outline.ontoggle=()=>outlineOpen.set(outlinePageId,outline.open);outline.append(el('summary'),el('ol'));content.append(outline);
  content.append(el('p','editor-hint','クリックして編集 · 「/」でブロック · 「[[」でページリンク'));const blocks=el('div','blocks');blocks.id='blocks';content.append(blocks);main.append(content);renderBlocks();content.append(button('＋ ブロックを追加',()=>{const b=block();active.blocks.push(b);save();renderBlocks();focusBlock(b.id);},'add-block'));
  if(active.database){const database=renderDatabase(active,{save,confirm:(title,message)=>action(title,el('p','',message),'削除')});database.addEventListener('database-removed',()=>render());content.append(database);}
  else content.append(button('▤ タスクデータベースを追加',()=>{active.database=createDatabase();save();render();},'add-database'));
@@ -73,7 +77,7 @@ function render(){document.title=(active.title||'無題')+' — folia';for(const
  if(incoming.length){const section=el('section','backlinks');section.setAttribute('aria-label','このページへのリンク');section.append(el('h2','mini-label','このページへのリンク · '+incoming.length));for(const {page,blocks} of incoming){const link=button('',()=>open(page.id),'backlink');link.append(el('span','',page.icon+' '+page.title),el('small','',blocks.length+' ブロックから参照'));section.append(link);}content.append(section);}
 }
 function focusBlock(id){requestAnimationFrame(()=>{const e=document.getElementById('edit-'+id);if(e){e.focus();const r=document.createRange();r.selectNodeContents(e);r.collapse(false);const s=window.getSelection();s.removeAllRanges();s.addRange(r);}});}
-function renderBlocks(){const area=$('#blocks');area.replaceChildren();const drag=createDragScope('block',active.id);const endDrag=()=>{drag.end();clearDropHints(area);};for(const b of active.blocks){const row=el('div','block block-'+b.type);row.dataset.id=b.id;const handle=button('⠿',e=>blockMenu(b,e.currentTarget),'block-handle');handle.setAttribute('aria-label','ブロックの種類と順序を変更');handle.id='block-handle-'+b.id;handle.draggable=true;handle.title='ドラッグで並べ替え · Alt+↑ / ↓ でも移動';handle.setAttribute('aria-keyshortcuts','Alt+ArrowUp Alt+ArrowDown');
+function renderBlocks(){renderOutline();const area=$('#blocks');area.replaceChildren();const drag=createDragScope('block',active.id);const endDrag=()=>{drag.end();clearDropHints(area);};for(const b of active.blocks){const row=el('div','block block-'+b.type);row.dataset.id=b.id;const handle=button('⠿',e=>blockMenu(b,e.currentTarget),'block-handle');handle.setAttribute('aria-label','ブロックの種類と順序を変更');handle.id='block-handle-'+b.id;handle.draggable=true;handle.title='ドラッグで並べ替え · Alt+↑ / ↓ でも移動';handle.setAttribute('aria-keyshortcuts','Alt+ArrowUp Alt+ArrowDown');
  handle.ondragstart=e=>{closeMenu();if(drag.start(b.id,e))row.classList.add('drag-source');};handle.ondragend=endDrag;
  handle.onkeydown=e=>{if(!e.isComposing&&e.altKey&&['ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const i=active.blocks.indexOf(b),target=active.blocks[i+(e.key==='ArrowUp'?-1:1)];if(target&&reorderItems(active.blocks,b.id,target.id,e.key==='ArrowUp'?'before':'after')){closeMenu();save();renderBlocks();document.getElementById(handle.id)?.focus();toast('ブロックを移動しました');}}};
  row.ondragover=e=>{if(!drag.matches(e))return;e.preventDefault();e.dataTransfer.dropEffect='move';for(const node of area.querySelectorAll('.drop-before,.drop-after'))node.classList.remove('drop-before','drop-after');row.classList.add('drop-'+dropPosition(row,e));};
