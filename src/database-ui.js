@@ -84,5 +84,6 @@ export function renderDatabase(page,{save,confirm}){
   }
   if(focusId)document.getElementById(focusId)?.focus();
  }
+ section.addEventListener('focus-task',event=>{const row=db.rows.find(r=>r.id===event.detail?.id);if(!row)return;query='';search.value='';status='all';toolbar.querySelector('select').value='all';if(db.view==='calendar'){if(row.due){selectedDate=row.due;[year,month]=row.due.split('-').map(Number);}else{undatedOpen=true;const list=body.querySelector('.calendar-undated');if(list)list.open=true;}}draw();requestAnimationFrame(()=>{const input=document.getElementById('task-'+row.id);input?.scrollIntoView({block:'center'});input?.focus({preventScroll:true});});});
  draw();return section;
 }
