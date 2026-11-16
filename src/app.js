@@ -1,3 +1,4 @@
+import {setupOffline} from './offline.js';
 import {resolvePage,pageUrl,pageAncestors,createPageRouter} from './navigation.js';
 import {reorderItems} from './reorder.js';
 import {createDragScope,dropPosition,clearDropHints} from './drag.js';
@@ -179,3 +180,5 @@ document.addEventListener('pointerdown',e=>{if(menu&&!menu.contains(e.target)&&!
 window.addEventListener('beforeunload',e=>{if(saveFailed){e.preventDefault();e.returnValue='';}});
 window.addEventListener('storage',e=>{if(e.key===KEY){readFailed=true;saveFailed=true;$('#save-status').textContent='別タブで変更されました。バックアップ後に再読み込み';toast('競合を防ぐため保存を停止しました。バックアップ後に再読み込みしてください。');}});
 render();updateHistoryButtons();router.start();if(initialRoute.missing&&!readFailed)toast('リンク先が見つかりません。削除済み、またはこのブラウザにないページです。');if(readFailed){saveFailed=true;$('#save-status').textContent='保存データを読み込めませんでした';toast('元のデータは上書きしていません。バックアップを復元してください。');}
+
+setupOffline({canReload:()=>!saveFailed,notify:toast});

@@ -6,7 +6,7 @@
 <p align="center"><strong>小さなメモから、大きなアイデアへ。</strong><br />Notion ライクな、あなたのための Markdown ワークスペース。</p>
 <p align="center">Local first · Block editor · Markdown in & out</p>
 
-> **v0.1.0** — 自動テスト 67 件・Chromium 実画面 17 シナリオを確認済み。[受け入れ結果](docs/v0.1-acceptance.md) / [リリースノート](docs/v0.1-release.md)
+> **v0.1.1** — 自動テスト 73 件・Chromium 実画面 24 シナリオを確認済み。[オフライン対応と検証結果](docs/v0.1.1-offline.md) / [リリースノート](docs/v0.1.1-release.md)
 >
 > 上の GIF は実際のアプリを Chromium で自動操作してキャプチャしたものです。
 
@@ -40,6 +40,14 @@ http://127.0.0.1:3000 を開きます。`PORT=8080 npm start` でポートを変
 - Markdown ファイルの読み込みと書き出し
 - ワークスペース全体の JSON バックアップ・復元
 - ブラウザの localStorage に自動保存、スマートフォンの画面幅にも対応
+
+## オフラインとアプリのインストール
+
+初回アクセス後、サイドバーの「オフライン起動 OK」を確認すると、同じブラウザで接続なしでも起動・編集できます。対応ブラウザでは「アプリをインストール」またはブラウザのメニューから独立したウィンドウで使えます。
+
+更新は自動適用せず、「更新して再読み込み」から行います。未保存の内容や別の folia のタブがある場合は更新を保留します。HTTPS または localhost / 127.0.0.1 が必要です。保存はブラウザ内なので、引き続きバックアップを使ってください。
+
+[オフライン対応の仕様と検証結果](docs/v0.1.1-offline.md)
 
 ## テンプレートでページを作る
 
@@ -161,6 +169,7 @@ npm test
 npm ci
 npx playwright install chromium
 npm run test:browser
+npm run test:offline
 ```
 
 画面キャプチャと結果は `artifacts/` に保存します。`QA_URL` で検証先、`CHROMIUM_PATH` で既存 Chromium の実行ファイルを指定できます。CI でも単体・HTTP・実画面テストを実行します。検証済みの範囲と未確認事項は [v0.1 受け入れ結果](docs/v0.1-acceptance.md) にまとめています。

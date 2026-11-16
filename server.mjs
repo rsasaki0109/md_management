@@ -3,7 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {resolve,extname,sep,relative} from 'node:path';
 const root=resolve(fileURLToPath(new URL('.',import.meta.url)));
-const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.gif':'image/gif','.png':'image/png'};
+const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.gif':'image/gif','.png':'image/png','.webmanifest':'application/manifest+json'};
 export async function handleRequest(req,res){
  try{
   if(!['GET','HEAD'].includes(req.method||'GET')){res.writeHead(405,{'Allow':'GET, HEAD'}).end();return;}
