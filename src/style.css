@@ -17,3 +17,5 @@ button:disabled{opacity:.3;cursor:default}button:disabled:hover{background:none}
 .copy-page-url{width:100%;font-size:12px;border:1px solid #dce5d2;border-radius:5px;padding:10px;color:#667f53;background:#f9fbf5}
 
 .offline-controls{display:flex;flex-direction:column;gap:7px;padding:7px 12px 13px;font-size:10px;color:#8b9b7c}.offline-controls button{font-size:10px;text-align:left;padding:6px 8px;color:#607c4f;background:#eaf0e2}.offline-controls [hidden]{display:none}
+
+.calendar-task[draggable=true]{cursor:grab}.calendar-cell.drop-column,.calendar-undated.drop-column{background:#e5efda;outline:2px solid #91ac75;outline-offset:-2px}.calendar-undated{min-height:55px;padding-bottom:12px}
