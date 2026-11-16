@@ -6,7 +6,7 @@
 <p align="center"><strong>小さなメモから、大きなアイデアへ。</strong><br />Notion ライクな、あなたのための Markdown ワークスペース。</p>
 <p align="center">Local first · Block editor · Markdown in & out</p>
 
-> **v0.1.0** — 自動テスト 67 件・Chromium 実画面 17 シナリオを確認済み。[受け入れ結果](docs/v0.1-acceptance.md) / [リリースノート](docs/v0.1-release.md)
+> **v0.1.1** — 自動テスト 73 件・Chromium 実画面 24 シナリオを確認済み。[オフライン対応と検証結果](docs/v0.1.1-offline.md) / [リリースノート](docs/v0.1.1-release.md)
 >
 > 上の GIF は実際のアプリを Chromium で自動操作してキャプチャしたものです。
 
