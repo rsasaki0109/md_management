@@ -1,3 +1,4 @@
+import {joinAdjacent} from './editor.js';
 import {searchPages,highlightParts} from './search.js';
 import {outlineEntries} from './outline.js';
 import {setupOffline} from './offline.js';
@@ -48,7 +49,7 @@ function restoreFocus(focus){
  });
 }
 function updateHistoryButtons(){$('#undo').disabled=!history.canUndo;$('#redo').disabled=!history.canRedo;}
-function save(group=null,record=true){document.title=(active.title||'無題')+' — folia';state.activeId=active.id;active.updatedAt=new Date().toISOString();if(record)history.record(state,{group,focus:editorFocus()});updateHistoryButtons();renderOutline();try{if(readFailed) throw Error();localStorage.setItem(KEY,JSON.stringify(state));saveFailed=false;$('#save-status').textContent='✓ 保存済み';}catch{saveFailed=true;$('#save-status').textContent='未保存 — バックアップしてください';}}
+function save(group=null,record=true,focus=editorFocus()){document.title=(active.title||'無題')+' — folia';state.activeId=active.id;active.updatedAt=new Date().toISOString();if(record)history.record(state,{group,focus});updateHistoryButtons();renderOutline();try{if(readFailed) throw Error();localStorage.setItem(KEY,JSON.stringify(state));saveFailed=false;$('#save-status').textContent='✓ 保存済み';}catch{saveFailed=true;$('#save-status').textContent='未保存 — バックアップしてください';}}
 function travel(direction){
  const snapshot=history.step(direction);if(!snapshot)return;
  state=snapshot.value;active=state.pages.find(p=>p.id===state.activeId)||state.pages[0];
@@ -92,6 +93,14 @@ function renderBlocks(){renderOutline();const area=$('#blocks');area.replaceChil
  edit.oncompositionend=()=>{b.text=edit.textContent;save('block:'+b.id);renderBlockLinks(b,row);updateLinkPicker(b,edit);};
  edit.oninput=e=>{b.text=edit.textContent;save('block:'+b.id,!e.isComposing);renderBlockLinks(b,row);if(e.isComposing){closeMenu();return;}if(b.text==='/')blockMenu(b,edit);else if(!updateLinkPicker(b,edit)&&menu?.dataset.block===b.id)closeMenu();};
  edit.onkeydown=e=>{if(e.isComposing)return;
+ if(['Backspace','Delete'].includes(e.key)&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey){
+  const selection=window.getSelection(),focus=editorFocus();
+  if(selection.isCollapsed&&edit.contains(selection.anchorNode)&&focus?.id===edit.id&&((e.key==='Backspace'&&focus.offset===0)||(e.key==='Delete'&&focus.offset===b.text.length))){
+   const joined=joinAdjacent(active.blocks,b.id,e.key==='Backspace'?'backward':'forward');
+   if(joined){e.preventDefault();closeMenu();save(null,true,{id:'edit-'+joined.id,offset:joined.offset});renderBlocks();restoreFocus({id:'edit-'+joined.id,offset:joined.offset});return;}
+  }
+ }
+
  if(linkPicker?.blockId===b.id){
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const length=linkPicker.items.length;if(length){linkPicker.index=(linkPicker.index+(e.key==='ArrowDown'?1:-1)+length)%length;highlightLinkChoice();}return;}
   if((e.key==='Enter'||e.key==='Tab')&&linkPicker.items.length){e.preventDefault();chooseLink(linkPicker.items[linkPicker.index]);return;}

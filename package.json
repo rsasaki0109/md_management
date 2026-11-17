@@ -7,7 +7,7 @@
     "dev": "node server.mjs",
     "start": "node server.mjs",
     "test": "node --test",
-    "check": "node --check src/app.js && node --check src/model.js && node --check src/history.js && node --check src/links.js && node --check src/database.js && node --check src/database-ui.js && node --check src/trash.js && node --check src/templates.js && node --check src/templates-ui.js && node --check src/reorder.js && node --check src/drag.js && node --check src/calendar.js && node --check src/navigation.js && node --check server.mjs && node --check sw.js && node --check src/offline.js && node --check src/outline.js && node --check src/search.js",
+    "check": "node --check src/app.js && node --check src/model.js && node --check src/history.js && node --check src/links.js && node --check src/database.js && node --check src/database-ui.js && node --check src/trash.js && node --check src/templates.js && node --check src/templates-ui.js && node --check src/reorder.js && node --check src/drag.js && node --check src/calendar.js && node --check src/navigation.js && node --check server.mjs && node --check sw.js && node --check src/offline.js && node --check src/outline.js && node --check src/search.js && node --check src/editor.js",
     "test:browser": "node qa/browser.mjs",
     "record:demo": "node qa/record-demo.mjs",
     "gif:demo": "node qa/render-demo.mjs",
