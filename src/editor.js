@@ -9,3 +9,9 @@ export function joinAdjacent(blocks,id,direction){
  const offset=left.text.length;left.text+=right.text;blocks.splice(leftIndex+1,1);
  return {id:left.id,offset};
 }
+
+export function duplicateBlock(blocks,id){
+ const index=blocks.findIndex(b=>b.id===id);if(index<0)return null;
+ const copy={...structuredClone(blocks[index]),id:crypto.randomUUID()};
+ blocks.splice(index+1,0,copy);return copy;
+}
