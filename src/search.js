@@ -3,6 +3,7 @@ export function searchPages(pages,query){
  const terms=query.trim().toLowerCase().split(/\s+/).filter(Boolean);
  return pages.flatMap(page=>{
   const sources=[{kind:'title',id:page.id,text:page.title,rank:0},...page.blocks.filter(b=>b.type!=='divider').map(b=>({kind:'block',id:b.id,text:b.text,rank:1})),...(page.database?.rows||[]).map(r=>({kind:'task',id:r.id,text:[r.title,statuses[r.status],priorities[r.priority],r.due].join(' '),rank:2}))];
+  if(page.project)sources.push({kind:'title',id:page.id,text:[page.project.repository,page.project.description,page.project.nextAction].join(' '),rank:0});
   const haystack=sources.map(s=>s.text).join(' ').toLowerCase();if(!terms.every(t=>haystack.includes(t)))return [];
   const matching=sources.filter(s=>terms.some(t=>s.text.toLowerCase().includes(t)));const source=matching[0]||sources[0];
   const text=terms.length?source.text:(page.blocks.find(b=>b.text.trim())?.text||'まだ本文がありません');

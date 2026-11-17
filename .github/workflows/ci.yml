@@ -28,6 +28,7 @@ jobs:
           done
           npm run test:browser
           npm run test:offline
+          npm run test:projects
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,3 +1,4 @@
+import {validateProject,projectStages,projectPriorities} from './projects.js';
 import {validateDatabase,databaseMarkdown,parseDatabaseTable} from './database.js';
 export const types = {text:'テキスト',h1:'見出し 1',h2:'見出し 2',bullet:'箇条書き',todo:'チェックリスト',quote:'引用',code:'コード',divider:'区切り線'};
 export const uid = () => crypto.randomUUID();
@@ -6,7 +7,7 @@ export function page(title='無題',parentId=null) {return {id:uid(),title,icon:
 export function descendants(pages,id) {const ids=new Set([id]); let size; do {size=ids.size; for(const p of pages) if(ids.has(p.parentId)) ids.add(p.id);} while(size!==ids.size); return ids;}
 export function canMove(pages,id,parentId) {return parentId===null || (pages.some(p=>p.id===parentId) && !descendants(pages,id).has(parentId));}
 function fencedCode(text){const lengths=[...(text.matchAll(/^`+/gm))].map(m=>m[0].length);const fence='`'.repeat(Math.max(3,...lengths.map(n=>n+1)));return fence+'\n'+text+'\n'+fence;}
-export function toMarkdown(p) {return '# '+p.title+'\n\n'+p.blocks.map(b=>({h1:'# ',h2:'## ',bullet:'- ',todo:b.checked?'- [x] ':'- [ ] ',quote:'> '}[b.type]??'')+(b.type==='divider'?'---':b.type==='code'?fencedCode(b.text):b.text)).join('\n\n')+(p.database?'\n\n'+databaseMarkdown(p.database):'')+'\n';}
+export function toMarkdown(p) {return '# '+p.title+'\n\n'+(p.project?'## OSS プロジェクト\n\nリポジトリ: https://github.com/'+p.project.repository+'\n\n状況: '+projectStages[p.project.stage]+' / 優先度: '+projectPriorities[p.project.priority]+'\n\n次の一手: '+p.project.nextAction+'\n\n':'')+p.blocks.map(b=>({h1:'# ',h2:'## ',bullet:'- ',todo:b.checked?'- [x] ':'- [ ] ',quote:'> '}[b.type]??'')+(b.type==='divider'?'---':b.type==='code'?fencedCode(b.text):b.text)).join('\n\n')+(p.database?'\n\n'+databaseMarkdown(p.database):'')+'\n';}
 export function fromMarkdown(source,title='インポートしたページ') {
   const p=page(title); p.blocks=[]; let code=null;
   const lines=source.replace(/\r\n?/g,'\n').split('\n');
@@ -35,6 +36,7 @@ export function validateBackup(data) {
   for(const p of data.pages) {
     if(typeof p.id!=='string'||ids.has(p.id)||typeof p.title!=='string'||typeof p.icon!=='string'||typeof p.favorite!=='boolean'||!Array.isArray(p.blocks)||!p.blocks.length) throw Error('ページの形式が正しくありません');
     ids.add(p.id);
+    if(p.project!==undefined)validateProject(p.project);
     if(p.database!==undefined)validateDatabase(p.database);
     for(const b of p.blocks) {if(typeof b.id!=='string'||blockIds.has(b.id)||!Object.hasOwn(types,b.type)||typeof b.text!=='string'||typeof b.checked!=='boolean') throw Error('ブロックの形式が正しくありません');blockIds.add(b.id);}
   }
@@ -57,7 +59,7 @@ export function validateBackup(data) {
 }
 export function initial() {
   const welcome=page('はじめに'); welcome.icon='🌱';welcome.favorite=true;
-  welcome.blocks=[block('text','ようこそ、あなたのワークスペースへ。'),block('quote','思いついたことを、思いついたままに。ここは、考えを少しずつ育てる場所です。'),block('h2','まずは、ひとつ書いてみよう'),block('text','この文章をクリックすると、そのまま編集できます。新しい行で「/」を入力すると、ブロックの種類を選べます。'),block('todo','最初のページをつくる',true),block('todo','今日のアイデアを書き留める'),block('todo','Markdown として書き出してみる'),block('h2','あなたらしい使い方で'),block('bullet','仕事のメモや、プロジェクトの計画に'),block('bullet','日々の気づきや、読みたい本のリストに'),block('bullet','ページの中にページをつくって、すっきり整理'),block('divider'),block('text','小さくはじめて、少しずつ。すべての変更は、このブラウザに自動で保存されます。')];
+  welcome.blocks=[block('text','ようこそ、あなたのワークスペースへ。'),block('quote','思いついたことを、思いついたままに。ここは、考えを少しずつ育てる場所です。'),block('h2','まずは、OSS を整理してみよう'),block('text','サイドバーの「OSS プロジェクト」から公開リポジトリを取り込み、状況・優先度・次の一手を整理しましょう。この文章もクリックして編集できます。'),block('todo','最初のページをつくる',true),block('todo','今日のアイデアを書き留める'),block('todo','Markdown として書き出してみる'),block('h2','あなたらしい使い方で'),block('bullet','仕事のメモや、プロジェクトの計画に'),block('bullet','日々の気づきや、読みたい本のリストに'),block('bullet','ページの中にページをつくって、すっきり整理'),block('divider'),block('text','小さくはじめて、少しずつ。すべての変更は、このブラウザに自動で保存されます。')];
   const ideas=page('アイデアノート'); ideas.icon='💡';ideas.blocks=[block('h2','次につくりたいもの'),block('text','まだ形になっていないアイデアも、ここから。'),block('bullet','気になったこと、試してみたいことを集める')];
   const project=page('プロジェクト');project.icon='🗂️';project.blocks=[block('h2','小さな一歩を積み重ねる'),block('todo','ゴールを決める'),block('todo','やることを書き出す')];
   const child=page('読書メモ',ideas.id);child.icon='📚'; child.blocks=[block('text','心に残った言葉を集めていきましょう。')];
