@@ -175,7 +175,7 @@ async function purgeTrash(entry=null){
 $('#trash-open').onclick=()=>{closeMenu();$('#trash-search').value='';renderTrash();$('#trash-dialog').showModal();$('#trash-search').focus();};
 $('#trash-close').onclick=()=>$('#trash-dialog').close();$('#trash-search').oninput=renderTrash;$('#trash-empty').onclick=()=>purgeTrash();
 $('.brand').onclick=e=>{e.preventDefault();open(state.pages.find(p=>p.parentId===null).id);};
-$('#oss-open').onclick=()=>{closeMenu();showProjects({dialog:$('#oss-dialog'),getPages:()=>state.pages,onOpen:open,onSave:(p,group,record)=>{p.updatedAt=new Date().toISOString();save(group,record);},onImport:repos=>{
+$('#oss-open').onclick=()=>{closeMenu();showProjects({dialog:$('#oss-dialog'),getPages:()=>state.pages,onOpen:open,onTaskOpen:(pageId,taskId)=>{open(pageId);$('.database')?.dispatchEvent(new CustomEvent('focus-task',{detail:{id:taskId}}));},onSave:(p,group,record)=>{p.updatedAt=new Date().toISOString();save(group,record);render();},onImport:repos=>{
  const excluded=(state.trash||[]).flatMap(entry=>entry.pages.flatMap(p=>p.project?[p.project.repository]:[]));
  const result=mergeRepositories(state.pages,repos,snapshot=>{const p=page(snapshot.repository.split('/')[1]);p.icon='📦';p.blocks=[block('text',snapshot.description),block('text','https://github.com/'+snapshot.repository),block('h2','この OSS の目的'),block('text',''),block('h2','開発メモ・決定事項'),block('text','')];p.database=createDatabase();p.database.view='board';return p;},excluded);save();render();return result;
  }});};
