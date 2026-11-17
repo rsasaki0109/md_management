@@ -1,4 +1,4 @@
-const CACHE='folia-shell-v0.1.1-duplicate-1';
+const CACHE='folia-shell-v0.1.1-deadline-1';
 const PREFIX='folia-shell-';
 const ASSETS=['/','/index.html','/manifest.webmanifest','/assets/icon-192.png','/assets/icon-512.png','/src/style.css','/src/app.js','/src/offline.js','/src/outline.js','/src/search.js','/src/editor.js','/src/model.js','/src/history.js','/src/links.js','/src/database.js','/src/database-ui.js','/src/calendar.js','/src/navigation.js','/src/reorder.js','/src/drag.js','/src/trash.js','/src/templates.js','/src/templates-ui.js'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{

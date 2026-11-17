@@ -1,4 +1,4 @@
-import {localToday,monthCells,shiftMonth,tasksForDate,rescheduleTask} from './calendar.js';
+import {localToday,monthCells,shiftMonth,tasksForDate,rescheduleTask,filterDeadlines} from './calendar.js';
 import {moveTask} from './reorder.js';
 import {createDragScope,dropPosition,clearDropHints} from './drag.js';
 import {statuses,priorities,task,visibleTasks,validDate} from './database.js';
@@ -8,7 +8,7 @@ function select(options,value,label,change){const node=el('select');node.setAttr
 export function renderDatabase(page,{save,confirm}){
  const drag=createDragScope('task',page.id);
  const db=page.database,section=el('section','database');section.setAttribute('aria-label','タスクデータベース');
- let query='',status='all',sort='manual',selectedDate=localToday(),undatedOpen=false;
+ let query='',status='all',deadline='all',sort='manual',selectedDate=localToday(),undatedOpen=false;
  let [year,month]=selectedDate.split('-').map(Number);
  const header=el('div','db-heading');header.append(el('h2','','タスクデータベース'));const count=el('span','db-count');header.append(count);
  header.append(button('データベースを削除',async()=>{if(await confirm('データベースを削除しますか？','タスク '+db.rows.length+' 件を削除します。Undo で元に戻せます。')){delete page.database;save();section.dispatchEvent(new CustomEvent('database-removed',{bubbles:true}));}},'db-delete'));
@@ -16,13 +16,14 @@ export function renderDatabase(page,{save,confirm}){
  const tableButton=button('▤ テーブル',()=>setView('table')),boardButton=button('▥ ボード',()=>setView('board'));const calendarButton=button('▦ カレンダー',()=>setView('calendar'));views.append(tableButton,boardButton,calendarButton);toolbar.append(views);
  const search=el('input','db-search');search.type='search';search.placeholder='タスクを検索…';search.setAttribute('aria-label','タスクを検索');search.oninput=()=>{query=search.value;draw();};toolbar.append(search);
  toolbar.append(select({all:'すべてのステータス',...statuses},status,'ステータスで絞り込み',value=>{status=value;draw();}));
+ const deadlineSelect=select({all:'すべての期限',today:'今日',overdue:'期限切れ（未完了）',next7:'今後7日',undated:'期限未設定'},deadline,'期限で絞り込み',value=>{deadline=value;draw();});toolbar.append(deadlineSelect);
  toolbar.append(select({manual:'手動順',due:'期限が近い順',priority:'優先度が高い順'},sort,'並び順',value=>{sort=value;draw();}));
  toolbar.append(button('＋ タスク',()=>add(status==='all'?'todo':status),'db-add'));
  const body=el('div','db-content'),announcement=el('p','sr-only');announcement.setAttribute('role','status');section.append(header,toolbar,body,announcement);
  const endDrag=()=>{drag.end();clearDropHints(body);};
  function commitMove(id,status,targetId=null,position='before'){endDrag();if(moveTask(db,id,status,{targetId,position,reorder:sort==='manual'})){save();draw();document.getElementById('task-handle-'+id)?.focus();announcement.textContent='タスクを'+statuses[status]+'に移動しました';}}
  function setView(view){db.view=view;save();draw();}
- function add(status,due=db.view==='calendar'?selectedDate:''){const row={...task(status),due};db.rows.push(row);save();query='';search.value='';draw();requestAnimationFrame(()=>document.getElementById('task-'+row.id)?.focus());}
+ function add(status,due=db.view==='calendar'?selectedDate:''){const row={...task(status),due};db.rows.push(row);save();deadline='all';deadlineSelect.value='all';query='';search.value='';draw();requestAnimationFrame(()=>document.getElementById('task-'+row.id)?.focus());}
  async function remove(row){if(await confirm('タスクを削除しますか？',row.title||'無題のタスク')){db.rows=db.rows.filter(r=>r.id!==row.id);save();draw();}}
  function titleInput(row){const input=el('input','task-title');input.id='task-'+row.id;input.value=row.title;input.placeholder='タスク名を入力…';input.setAttribute('aria-label','タスク名');input.oninput=e=>{row.title=input.value;save('task:'+row.id+':title',!e.isComposing);};input.oncompositionend=()=>{row.title=input.value;save('task:'+row.id+':title');};return input;}
  function statusInput(row){const input=select(statuses,row.status,'ステータス',value=>{row.status=value;save();draw();});input.id='task-status-'+row.id;input.className='task-status status-'+row.status;return input;}
@@ -57,7 +58,7 @@ export function renderDatabase(page,{save,confirm}){
   endDrag();
   const focusId=body.contains(document.activeElement)?document.activeElement.id:null;
   undatedOpen=body.querySelector('.calendar-undated')?.open??undatedOpen;
-  const rows=visibleTasks(db,{query,status,sort});body.replaceChildren();count.textContent=rows.length+' / '+db.rows.length;tableButton.classList.toggle('selected',db.view==='table');boardButton.classList.toggle('selected',db.view==='board');tableButton.setAttribute('aria-pressed',String(db.view==='table'));boardButton.setAttribute('aria-pressed',String(db.view==='board'));calendarButton.classList.toggle('selected',db.view==='calendar');calendarButton.setAttribute('aria-pressed',String(db.view==='calendar'));
+  const rows=filterDeadlines(visibleTasks(db,{query,status,sort}),deadline);body.replaceChildren();count.textContent=rows.length+' / '+db.rows.length;tableButton.classList.toggle('selected',db.view==='table');boardButton.classList.toggle('selected',db.view==='board');tableButton.setAttribute('aria-pressed',String(db.view==='table'));boardButton.setAttribute('aria-pressed',String(db.view==='board'));calendarButton.classList.toggle('selected',db.view==='calendar');calendarButton.setAttribute('aria-pressed',String(db.view==='calendar'));
   if(db.view==='table'){
    const wrap=el('div','db-table-scroll'),table=el('table','db-table'),caption=el('caption','sr-only','タスク一覧'),head=el('thead'),tr=el('tr');
    for(const label of ['タスク名','ステータス','優先度','期限','操作']){const th=el('th','',label);th.scope='col';tr.append(th);}head.append(tr);table.append(caption,head);
@@ -84,6 +85,6 @@ export function renderDatabase(page,{save,confirm}){
   }
   if(focusId)document.getElementById(focusId)?.focus();
  }
- section.addEventListener('focus-task',event=>{const row=db.rows.find(r=>r.id===event.detail?.id);if(!row)return;query='';search.value='';status='all';toolbar.querySelector('select').value='all';if(db.view==='calendar'){if(row.due){selectedDate=row.due;[year,month]=row.due.split('-').map(Number);}else{undatedOpen=true;const list=body.querySelector('.calendar-undated');if(list)list.open=true;}}draw();requestAnimationFrame(()=>{const input=document.getElementById('task-'+row.id);input?.scrollIntoView({block:'center'});input?.focus({preventScroll:true});});});
+ section.addEventListener('focus-task',event=>{const row=db.rows.find(r=>r.id===event.detail?.id);if(!row)return;deadline='all';deadlineSelect.value='all';query='';search.value='';status='all';toolbar.querySelector('select').value='all';if(db.view==='calendar'){if(row.due){selectedDate=row.due;[year,month]=row.due.split('-').map(Number);}else{undatedOpen=true;const list=body.querySelector('.calendar-undated');if(list)list.open=true;}}draw();requestAnimationFrame(()=>{const input=document.getElementById('task-'+row.id);input?.scrollIntoView({block:'center'});input?.focus({preventScroll:true});});});
  draw();return section;
 }

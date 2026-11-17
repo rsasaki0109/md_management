@@ -21,3 +21,17 @@ export function tasksForDate(rows,date){return rows.filter(row=>row.due===date);
 export function rescheduleTask(db,id,date){
  const row=db.rows.find(row=>row.id===id);if(!row||!validDate(date)||row.due===date)return false;row.due=date;return true;
 }
+
+export function filterDeadlines(rows,filter='all',today=localToday()){
+ if(filter==='all')return rows.slice();
+ if(!validDate(today)||!today)throw Error('基準日が正しくありません');
+ const end=new Date(today+'T00:00:00Z');end.setUTCDate(end.getUTCDate()+6);
+ const last=end.getUTCFullYear()>9999?'9999-12-31':end.toISOString().slice(0,10);
+ return rows.filter(row=>{
+  if(filter==='undated')return row.due==='';
+  if(filter==='today')return row.due===today;
+  if(filter==='overdue')return !!row.due&&row.due<today&&row.status!=='done';
+  if(filter==='next7')return !!row.due&&row.due>=today&&row.due<=last;
+  return false;
+ });
+}
