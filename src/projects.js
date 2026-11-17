@@ -1,3 +1,4 @@
+import {createDatabase,task} from './database.js';
 import {filterDeadlines} from './calendar.js';
 export const projectStages={idea:'未整理',active:'開発中',maintain:'保守中',paused:'保留'};
 export const projectPriorities={high:'高',medium:'中',low:'低'};
@@ -38,4 +39,10 @@ export function projectTasks(pages,{query='',deadline='all',priority='all',proje
  const entries=pages.filter(p=>p.project&&(projectId==='all'||p.id===projectId)&&(projectPriority==='all'||p.project.priority===projectPriority)).flatMap(page=>(page.database?.rows||[]).filter(task=>(completion==='all'||(completion==='done'?task.status==='done':task.status!=='done'))&&(priority==='all'||task.priority===priority)&&[task.title,page.title,page.project.repository].join(' ').toLowerCase().includes(q)).map(task=>({page,task})));
  const visible=new Set(filterDeadlines(entries.map(e=>e.task),deadline,today));
  return entries.filter(e=>visible.has(e.task)).sort((a,b)=>(a.task.due||'9999-99-99').localeCompare(b.task.due||'9999-99-99')||(rank[a.task.priority]-rank[b.task.priority])||(rank[a.page.project.priority]-rank[b.page.project.priority]));
+}
+
+export function addNextActionTask(page){
+ const title=page.project?.nextAction.trim();if(!title)return null;
+ const existing=page.database?.rows.find(row=>row.status!=='done'&&row.title.trim()===title);if(existing)return existing;
+ const row={...task(),title,priority:page.project.priority};page.database??=createDatabase();page.database.rows.push(row);return row;
 }

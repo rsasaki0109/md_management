@@ -1,5 +1,5 @@
 import {priorities,statuses} from './database.js';
-import {projectStages,projectPriorities,filterProjects,fetchRepositories,projectTasks} from './projects.js';
+import {projectStages,projectPriorities,filterProjects,fetchRepositories,projectTasks,addNextActionTask} from './projects.js';
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const button=(text,click,cls='')=>{const n=el('button',cls,text);n.type='button';n.onclick=click;return n;};
 function select(options,value,label,change){const n=el('select');n.setAttribute('aria-label',label);for(const [key,text] of Object.entries(options)){const o=el('option','',text);o.value=key;n.append(o);}n.value=value;n.onchange=()=>change(n.value);return n;}
@@ -7,7 +7,10 @@ export function projectPanel(page,save){
  const p=page.project,panel=el('section','project-panel');panel.setAttribute('aria-label','OSS プロジェクト情報');const link=el('a','project-repository',p.repository+' ↗');link.href='https://github.com/'+p.repository;link.target='_blank';link.rel='noopener noreferrer';panel.append(link,el('p','project-description',p.description));
  const metrics=el('div','project-metrics');metrics.textContent=(p.language||'言語未設定')+' · ★ '+p.stars+' · Open issues / PR '+p.openIssues+(p.pushedAt?' · 最終 push '+new Date(p.pushedAt).toLocaleDateString('ja-JP'):'');panel.append(metrics);
  const fields=el('div','project-fields');fields.append(select(projectStages,p.stage,'開発状況',value=>{p.stage=value;save();}),select(projectPriorities,p.priority,'プロジェクト優先度',value=>{p.priority=value;save();}));panel.append(fields);
- const label=el('label','project-action-label','次の一手'),input=el('input','project-next-action');input.value=p.nextAction;input.placeholder='次に進める作業をひとつ';input.setAttribute('aria-label','次の一手');input.oninput=e=>{p.nextAction=input.value;save('project:'+page.id,!e.isComposing);};input.oncompositionend=()=>save('project:'+page.id);label.append(input);panel.append(label);
+ const label=el('label','project-action-label','次の一手'),input=el('input','project-next-action');input.value=p.nextAction;input.placeholder='次に進める作業をひとつ';input.setAttribute('aria-label','次の一手');input.oninput=e=>{p.nextAction=input.value;updateAdd();save('project:'+page.id,!e.isComposing);};input.oncompositionend=()=>save('project:'+page.id);label.append(input);panel.append(label);
+ const add=button('タスクに追加',()=>{if(addNextActionTask(page)){updateAdd();save();}},'project-add-task');
+ function updateAdd(){const title=p.nextAction.trim(),exists=page.database?.rows.some(row=>row.status!=='done'&&row.title.trim()===title);add.disabled=!title||exists;add.textContent=exists?'未完了タスクに追加済み':'タスクに追加';}
+ updateAdd();panel.append(add);
  panel.append(el('small','project-sync','GitHub 取得: '+new Date(p.syncedAt).toLocaleString('ja-JP')));return panel;
 }
 export function showProjects({dialog,getPages,onImport,onSave,onOpen,onTaskOpen}){
