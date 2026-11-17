@@ -57,10 +57,11 @@ export async function fetchProjectWork(repository,{fetcher=fetch,signal}={}){
 export function suggestProjectActions(page,items=[]){
  const rank={high:0,medium:1,low:2,none:3},repository=page.project.repository;
  const local=(page.database?.rows||[]).filter(row=>row.status!=='done'&&row.title.trim()).slice().sort((a,b)=>(a.status==='doing'?-1:0)-(b.status==='doing'?-1:0)||(a.due||'9999').localeCompare(b.due||'9999')||rank[a.priority]-rank[b.priority]).slice(0,3).map(row=>({action:row.title.trim(),reason:row.status==='doing'?'進行中のタスクを先に進めます':'このプロジェクトの未完了タスクです',done:'元のタスクの完了条件を確認して作業を終える',source:'ローカルタスク',url:null}));
- const remote=items.slice().sort((a,b)=>Number(!a.labels?.some(l=>/bug/i.test(typeof l==='string'?l:l.name)))-Number(!b.labels?.some(l=>/bug/i.test(typeof l==='string'?l:l.name)))).slice(0,6).map(item=>{
+ const evidence=items.flatMap(item=>item.progressEvidence?[item.progressEvidence]:[]);
+ const remote=items.filter(item=>!item.progressEvidence).sort((a,b)=>Number(!a.labels?.some(l=>/bug/i.test(typeof l==='string'?l:l.name)))-Number(!b.labels?.some(l=>/bug/i.test(typeof l==='string'?l:l.name)))).slice(0,6).map(item=>{
   const pr=Boolean(item.pull_request),bug=item.labels?.some(l=>/bug/i.test(typeof l==='string'?l:l.name));
   return {action:(pr?'PR #': 'Issue #')+item.number+'「'+item.title.trim()+'」'+(pr?'の差分とテスト結果を確認し、レビュー指摘をまとめる':bug?'の再現手順を実行し、期待値と実際の挙動を記録する':'の要件を確認し、実装手順と確認項目を整理する'),reason:pr?'公開中の PR がレビュー候補です':bug?'bug ラベルのある未解決 Issue です':'未解決の Issue を具体的な作業に分解します',done:pr?'変更点・テスト結果・懸念点をレビュー用メモに残す':bug?'実行環境・再現手順・実行結果を開発メモに残す':'対応範囲と検証方法を開発メモに残す',source:(pr?'PR #':'Issue #')+item.number,url:'https://github.com/'+repository+(pr?'/pull/':'/issues/')+item.number};
  });
- const candidates=[...local,...remote];if(candidates.length)return candidates.slice(0,6);
+ const candidates=[...evidence,...local,...remote];if(candidates.length)return candidates.slice(0,6);
  return [{action:repository+' の README の導入手順をクリーンな環境で実行し、結果を記録する',reason:'未完了タスクや取得済みの Issue・PR がないため、導入確認を候補にしています',done:'環境・実行コマンド・成功結果または失敗箇所を開発メモに残す',source:'リポジトリ',url:'https://github.com/'+repository}];
 }

@@ -31,3 +31,5 @@ button:disabled{opacity:.3;cursor:default}button:disabled:hover{background:none}
 .project-add-task{font-size:11px;padding:8px 12px;border:1px solid #dce5d3;border-radius:5px;margin-top:9px;color:#5a724a}.project-add-task:disabled{opacity:.55;cursor:default}
 
 .project-propose{display:block;margin-top:10px;font-size:11px;padding:8px 0;text-decoration:underline;color:#5a724a}.project-candidate{border:1px solid #dce5d3;border-radius:5px;padding:12px;margin:10px 0;background:#fff;overflow-wrap:anywhere}.project-candidate p{font-size:11px;line-height:1.7;margin:6px 0}.project-candidate .project-candidate-action{font-size:12px;font-weight:600}.project-candidate a{font-size:11px;text-decoration:underline}.project-use-suggestion{display:block;font-size:11px;padding:8px;margin-top:8px;background:#edf3e5;border-radius:4px}.project-suggestion-notice{font-size:10px;line-height:1.7}
+
+.project-candidate .project-evidence{display:block;margin-top:7px}
