@@ -3,9 +3,10 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const output=new URL('../artifacts/',import.meta.url).pathname;await mkdir(output,{recursive:true});
 const browser=await chromium.launch({...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),headless:true,args:['--no-sandbox']}),context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true}),page=await context.newPage(),results=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
-let stars=10,fail=false;
+let stars=10,fail=false,workFail=false;
 const repo=name=>({full_name:'rsasaki0109/'+name,description:'公開 OSS のテストデータ',language:'Rust',stargazers_count:stars,open_issues_count:2,pushed_at:'2026-11-17T00:00:00Z',owner:{login:'rsasaki0109'},fork:false,archived:false,private:false});
 await context.route('https://api.github.com/users/rsasaki0109/repos?**',route=>route.fulfill({status:fail?403:200,contentType:'application/json',body:JSON.stringify(fail?{message:'limit'}:[repo('lidar_slam_ros2'),repo('rust_robotics'),{...repo('fork'),fork:true}])}));
+await context.route('https://api.github.com/repos/rsasaki0109/*/issues?**',route=>route.fulfill({status:workFail?403:200,contentType:'application/json',body:JSON.stringify(workFail?{}:[{number:42,title:'起動時にクラッシュする',state:'open',labels:[{name:'bug'}],html_url:'javascript:invalid'},{number:43,title:'テスト追加',state:'open',labels:[],pull_request:{}}])}));
 const state=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('folia-workspace-v1')));
 async function step(name,fn){try{await fn();results.push({name,passed:true});console.log('PASS '+name);}catch(error){results.push({name,passed:false,error:error.message});await page.screenshot({path:output+'projects-failure.png',fullPage:true});throw error;}}
 try{
@@ -30,5 +31,12 @@ try{
   let p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));assert.equal(p.project.nextAction,'再取得後の計画');assert.equal(p.database.rows.filter(t=>t.title==='再取得後の計画').length,1);assert.equal(p.database.rows.find(t=>t.title==='再取得後の計画').priority,'high');
   await page.getByRole('button',{name:'横断タスク',exact:true}).click();await page.getByLabel('横断タスクを検索',{exact:true}).fill('再取得後の計画');assert.equal(await page.locator('.oss-task-row').count(),1);await page.locator('.oss-task-open').click();assert.equal(await page.locator('#page-title').innerText(),'lidar_slam_ros2');await page.waitForFunction(()=>document.activeElement.value==='再取得後の計画');await page.reload();await page.locator('.project-panel').waitFor();assert.equal(await page.locator('.project-panel .project-add-task').isDisabled(),true);p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));assert.equal(p.database.rows.filter(t=>t.title==='再取得後の計画').length,1);
  });
+ await step('Issue・PRの具体的な候補から次の一手を選びタスク化する',async()=>{
+  const before=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2')).project.nextAction;
+  await page.locator('.project-panel .project-propose').click();await page.waitForFunction(()=>document.querySelector('.project-suggestion-notice').textContent.includes('最大30件'));assert.equal(await page.getByLabel('次の一手',{exact:true}).inputValue(),before);
+  const issue=page.locator('.project-candidate').filter({hasText:'Issue #42'});assert.ok((await issue.innerText()).includes('再現手順を実行'));assert.ok((await issue.innerText()).includes('完了の目安'));assert.equal(await issue.locator('a').getAttribute('href'),'https://github.com/rsasaki0109/lidar_slam_ros2/issues/42');assert.ok((await page.locator('.project-candidate').filter({hasText:'PR #43'}).innerText()).includes('差分とテスト結果'));
+  await issue.getByRole('button').click();assert.match(await page.getByLabel('次の一手',{exact:true}).inputValue(),/Issue #42.*再現手順/);await page.locator('.project-panel .project-add-task').click();await page.reload();await page.locator('.project-panel').waitFor();const p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));assert.ok(p.database.rows.some(t=>t.title.includes('Issue #42')));assert.match(p.project.nextAction,/Issue #42/);
+ });
+ await step('候補の取得失敗時も計画を保ちローカルの作業を表示する',async()=>{workFail=true;const before=await state();await page.locator('.project-panel .project-propose').click();await page.waitForFunction(()=>document.querySelector('.project-suggestion-notice').textContent.includes('利用制限'));assert.ok(await page.locator('.project-candidate').count()>0);assert.deepEqual(await state(),before);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:output+'project-suggestions-mobile.png'});});
  assert.deepEqual(errors,[]);
 }finally{await writeFile(output+'projects-results.json',JSON.stringify({results,errors},null,2));await browser.close();}

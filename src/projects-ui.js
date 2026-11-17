@@ -1,5 +1,5 @@
 import {priorities,statuses} from './database.js';
-import {projectStages,projectPriorities,filterProjects,fetchRepositories,projectTasks,addNextActionTask} from './projects.js';
+import {projectStages,projectPriorities,filterProjects,fetchRepositories,projectTasks,addNextActionTask,fetchProjectWork,suggestProjectActions} from './projects.js';
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const button=(text,click,cls='')=>{const n=el('button',cls,text);n.type='button';n.onclick=click;return n;};
 function select(options,value,label,change){const n=el('select');n.setAttribute('aria-label',label);for(const [key,text] of Object.entries(options)){const o=el('option','',text);o.value=key;n.append(o);}n.value=value;n.onchange=()=>change(n.value);return n;}
@@ -11,6 +11,10 @@ export function projectPanel(page,save){
  const add=button('タスクに追加',()=>{if(addNextActionTask(page)){updateAdd();save();}},'project-add-task');
  function updateAdd(){const title=p.nextAction.trim(),exists=page.database?.rows.some(row=>row.status!=='done'&&row.title.trim()===title);add.disabled=!title||exists;add.textContent=exists?'未完了タスクに追加済み':'タスクに追加';}
  updateAdd();panel.append(add);
+ const suggestions=el('div','project-suggestions'),notice=el('p','project-suggestion-notice'),candidates=el('div','project-candidates');notice.setAttribute('role','status');
+ function drawCandidates(items=[]){candidates.replaceChildren();for(const candidate of suggestProjectActions(page,items)){const card=el('article','project-candidate');card.append(el('p','project-candidate-action',candidate.action),el('p','',candidate.reason),el('p','','完了の目安: '+candidate.done));if(candidate.url){const source=el('a','',candidate.source+' ↗');source.href=candidate.url;source.target='_blank';source.rel='noopener noreferrer';card.append(source);}else card.append(el('small','',candidate.source));card.append(button('この作業を次の一手にする',()=>{p.nextAction=candidate.action;input.value=p.nextAction;updateAdd();save();},'project-use-suggestion'));candidates.append(card);}}
+ const propose=button('具体的な作業候補を出す',async()=>{propose.disabled=true;suggestions.hidden=false;drawCandidates();notice.textContent='GitHub の未解決 Issue・PR を取得しています…';try{const items=await fetchProjectWork(p.repository);if(!panel.isConnected)return;drawCandidates(items);notice.textContent='更新順で最大30件を取得。作業中のタスク、期限、bug ラベルを参考に候補を表示します。';}catch(error){if(panel.isConnected)notice.textContent=error.message+'。ローカルの候補を表示しています。';}finally{propose.disabled=false;}},'project-propose');
+ suggestions.hidden=true;suggestions.append(notice,candidates);panel.append(propose,suggestions);
  panel.append(el('small','project-sync','GitHub 取得: '+new Date(p.syncedAt).toLocaleString('ja-JP')));return panel;
 }
 export function showProjects({dialog,getPages,onImport,onSave,onOpen,onTaskOpen}){
