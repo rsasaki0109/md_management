@@ -11,7 +11,7 @@ export function projectPanel(page,save){
  const metrics=el('div','project-metrics');metrics.textContent=(p.language||'言語未設定')+' · ★ '+p.stars+' · Open issues / PR '+p.openIssues+(p.pushedAt?' · 最終 push '+new Date(p.pushedAt).toLocaleDateString('ja-JP'):'');panel.append(metrics);
  const fields=el('div','project-fields');fields.append(select(projectStages,p.stage,'開発状況',value=>{p.stage=value;save();}),select(projectPriorities,p.priority,'プロジェクト優先度',value=>{p.priority=value;save();}));panel.append(fields);
  const label=el('label','project-action-label','次の一手'),input=el('input','project-next-action');input.value=p.nextAction;input.placeholder='次に進める作業をひとつ';input.setAttribute('aria-label','次の一手');input.oninput=e=>{p.nextAction=input.value;if(p.nextActionContext?.action!==p.nextAction)delete p.nextActionContext;updateAdd();save('project:'+page.id,!e.isComposing);};input.oncompositionend=()=>save('project:'+page.id);label.append(input);panel.append(label);
- const add=button('タスクに追加',()=>{if(addNextActionTask(page)){updateAdd();save();}},'project-add-task');
+ const add=button('タスクに追加',()=>{if(addNextActionTask(page)){updateAdd();save();panel.dispatchEvent(new CustomEvent('project-task-updated',{bubbles:true}));}},'project-add-task');
  function updateAdd(){const title=p.nextAction.trim(),exists=page.database?.rows.find(row=>row.status!=='done'&&row.title.trim()===title),attach=exists&&!exists.context&&p.nextActionContext;add.disabled=!title||Boolean(exists&&!attach);add.textContent=attach?'既存タスクに根拠を保存':exists?'未完了タスクに追加済み':'タスクに追加';}
  updateAdd();panel.append(add);
  const suggestions=el('div','project-suggestions'),notice=el('p','project-suggestion-notice'),candidates=el('div','project-candidates');notice.setAttribute('role','status');
