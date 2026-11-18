@@ -15,7 +15,7 @@ export function taskContextMarkdown(context){
  return ['保存した作業: '+context.action,context.reason,'完了の目安: '+context.done,...links,...(context.draft?['Issue 本文の修正案:',fence(context.draft.updated)+'\n'+context.draft.updated+'\n'+fence(context.draft.updated)]:[])].join('\n\n');
 }
 
-const workCheckLabels={needed:'差分あり',aligned:'件数一致',closed:'Issue 終了'};
+export const workCheckLabels={needed:'差分あり',aligned:'件数一致',closed:'Issue 終了'};
 export function savedWorkCheckLabel(check){
  if(!check)return '';
  return workCheckLabels[check.status]+' · '+new Date(check.checkedAt).toLocaleString('ja-JP');

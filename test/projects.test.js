@@ -22,3 +22,16 @@ test('work suggestions prioritize ongoing local work and bugs and retain source 
 test('no evidence produces an explicit onboarding candidate without claiming repository defects',()=>{const p=page('demo');p.project=snapshot('demo');const [c]=suggestProjectActions(p);assert.match(c.action,/README.*導入手順/);assert.match(c.reason,/候補/);assert.equal(c.url,'https://github.com/rsasaki0109/demo');});
 test('public work fetch validates repository, open items and trusted source URLs',async()=>{let url;const items=await fetchProjectWork('rsasaki0109/demo',{fetcher:async value=>{url=value;return {ok:true,json:async()=>[{number:2,title:'Crash',state:'open',html_url:'javascript:evil',labels:[]},{number:3,title:'Closed',state:'closed'},{number:-1,title:'bad',state:'open'}]};}});assert.match(url,/issues\?state=open/);assert.equal(items.length,1);const p=page('demo');p.project=snapshot('demo');assert.equal(suggestProjectActions(p,items)[0].url,'https://github.com/rsasaki0109/demo/issues/2');await assert.rejects(()=>fetchProjectWork('../bad'));});
 test('work fetch errors are reported without changing local plans or tasks',async()=>{await assert.rejects(()=>fetchProjectWork('rsasaki0109/demo',{fetcher:async()=>{throw Error('offline');}}),/ネットワーク接続/);await assert.rejects(()=>fetchProjectWork('rsasaki0109/demo',{fetcher:async()=>({ok:false,status:403})}),/利用制限/);await assert.rejects(()=>fetchProjectWork('rsasaki0109/demo',{fetcher:async()=>({ok:true,json:async()=>({})})}),/応答/);});
+
+test('work check filters exclude tasks without drafts and combine with completion and project filters',()=>{
+ const p=page('demo');p.project=snapshot('demo');
+ const row=(id,status='todo')=>({id,title:id,status,priority:'none',due:''});
+ p.database={rows:[row('manual'),{...row('unchecked'),context:{draft:{}}},{...row('needed'),context:{draft:{}},workCheck:{status:'needed'}},{...row('aligned','done'),context:{draft:{}},workCheck:{status:'aligned'}}]};
+ const ids=opts=>projectTasks([p],opts).map(({task})=>task.id);
+ assert.deepEqual(ids({workCheck:'unchecked'}),['unchecked']);
+ assert.deepEqual(ids({workCheck:'needed',projectId:p.id}),['needed']);
+ assert.deepEqual(ids({workCheck:'aligned'}),[]);
+ assert.deepEqual(ids({workCheck:'aligned',completion:'done'}),['aligned']);
+ assert.deepEqual(ids({workCheck:'closed'}),[]);
+ assert.deepEqual(ids({}),['manual','unchecked','needed']);
+});

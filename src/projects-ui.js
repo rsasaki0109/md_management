@@ -1,9 +1,8 @@
-import {savedWorkCheckLabel} from './task-context.js';
+import {contextFromCandidate,savedWorkCheckLabel,workCheckLabels} from './task-context.js';
 import {issueDraft,taskContextDetails} from './work-details-ui.js';
-import {contextFromCandidate} from './task-context.js';
 import {inspectWorkEvidence} from './work-evidence.js';
 import {priorities,statuses} from './database.js';
-import {projectStages,projectPriorities,filterProjects,fetchRepositories,projectTasks,addNextActionTask,fetchProjectWork,suggestProjectActions} from './projects.js';
+import {projectStages,projectPriorities,filterProjects,fetchRepositories,projectTasks,matchesWorkCheck,addNextActionTask,fetchProjectWork,suggestProjectActions} from './projects.js';
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const button=(text,click,cls='')=>{const n=el('button',cls,text);n.type='button';n.onclick=click;return n;};
 function select(options,value,label,change){const n=el('select');n.setAttribute('aria-label',label);for(const [key,text] of Object.entries(options)){const o=el('option','',text);o.value=key;n.append(o);}n.value=value;n.onchange=()=>change(n.value);return n;}
@@ -22,7 +21,7 @@ export function projectPanel(page,save){
  panel.append(el('small','project-sync','GitHub 取得: '+new Date(p.syncedAt).toLocaleString('ja-JP')));return panel;
 }
 export function showProjects({dialog,getPages,onImport,onSave,onOpen,onTaskOpen}){
- let mode='projects',taskQuery='',deadline='all',taskPriority='all',focusPriority='all',projectId='all',completion='open';
+ let mode='projects',taskQuery='',deadline='all',taskPriority='all',focusPriority='all',projectId='all',completion='open',workCheck='all';
  let query='',stage='all',priority='all',controller=null,busy=false;dialog.replaceChildren();dialog.setAttribute('aria-labelledby','oss-title');
  const header=el('div','oss-header'),title=el('h2','','OSS プロジェクト');title.id='oss-title';header.append(title,button('閉じる',()=>dialog.close()));dialog.append(header,el('p','oss-intro','公開リポジトリを取り込み、状況・優先度・次の一手を整理します。GitHub の情報は手動取得時のスナップショットです。'));
  const toolbar=el('div','oss-toolbar'),owner=el('input');owner.value='rsasaki0109';owner.setAttribute('aria-label','GitHub ユーザー名');owner.placeholder='GitHub ユーザー名';const message=el('p','oss-message');message.setAttribute('role','status');
@@ -31,9 +30,14 @@ export function showProjects({dialog,getPages,onImport,onSave,onOpen,onTaskOpen}
  const tabs=el('div','oss-view-tabs'),projectsButton=button('プロジェクト',()=>{mode='projects';draw();}),tasksButton=button('横断タスク',()=>{mode='tasks';draw();});tabs.append(projectsButton,tasksButton);dialog.insertBefore(tabs,filters);
  const taskFilters=el('div','oss-filters'),taskSearch=el('input');taskSearch.type='search';taskSearch.placeholder='タスク名・リポジトリを検索';taskSearch.setAttribute('aria-label','横断タスクを検索');taskSearch.oninput=()=>{taskQuery=taskSearch.value;draw();};
  taskFilters.append(taskSearch,select({open:'未完了',all:'すべて',done:'完了'},completion,'タスクの完了状態',value=>{completion=value;draw();}),select({all:'すべての期限',today:'今日',overdue:'期限切れ（未完了）',next7:'今後7日',undated:'期限未設定'},deadline,'横断タスクの期限',value=>{deadline=value;draw();}),select({all:'すべてのタスク優先度',...priorities},taskPriority,'横断タスクの優先度',value=>{taskPriority=value;draw();}),select({all:'すべてのプロジェクト優先度',...projectPriorities},focusPriority,'重点プロジェクト',value=>{focusPriority=value;draw();}));
+ const workCheckSelect=select(
+  {all:'すべての照合状況',unchecked:'未照合',...workCheckLabels},workCheck,'照合結果で絞り込み',
+  value=>{workCheck=value;draw();}
+ );
+ taskFilters.append(workCheckSelect);
  const projectSelect=select({all:'すべてのプロジェクト',...Object.fromEntries(getPages().filter(p=>p.project).map(p=>[p.id,p.title]))},projectId,'プロジェクトで絞り込み',value=>{projectId=value;draw();});taskFilters.append(projectSelect);dialog.insertBefore(taskFilters,count);
  function drawTasks(){
-  const entries=projectTasks(getPages(),{query:taskQuery,deadline,priority:taskPriority,projectPriority:focusPriority,projectId,completion});
+  const entries=projectTasks(getPages(),{query:taskQuery,deadline,priority:taskPriority,projectPriority:focusPriority,projectId,completion,workCheck});
   count.textContent=entries.length+' タスク';
   if(!entries.length)list.append(el('p','empty',getPages().some(p=>p.project&&p.database?.rows.length)?'条件に一致するタスクはありません':'まだタスクがありません。各プロジェクトのページから追加してください。'));
   for(const {page,task} of entries){
@@ -48,17 +52,18 @@ export function showProjects({dialog,getPages,onImport,onSave,onOpen,onTaskOpen}
    properties.append(el('span','',statuses[task.status]),el('span','',priorities[task.priority]),el('span','',task.due||'期限未設定'));
    row.append(done,info,properties);
    if(task.context){
-    const lastCheck=el('span','oss-task-last-check',savedWorkCheckLabel(task.workCheck));
-    lastCheck.hidden=!task.workCheck;
+    const lastCheck=el('span','oss-task-last-check',task.workCheck?savedWorkCheckLabel(task.workCheck):'未照合');
+    lastCheck.hidden=!task.context.draft;
     properties.append(lastCheck);
     function workDetails(){
-     return taskContextDetails(task.context,{
+     const work=taskContextDetails(task.context,{
       lastCheck:task.workCheck,
       onChecked(record){
        task.workCheck=record;
        onSave(page);
        lastCheck.textContent=savedWorkCheckLabel(record);
        lastCheck.hidden=false;
+       reconcileFilter();
       },
       onUpdate(context){
        task.context=context;
@@ -71,6 +76,15 @@ export function showProjects({dialog,getPages,onImport,onSave,onOpen,onTaskOpen}
       },
       onComplete:task.status==='done'?undefined:()=>setDone(true)
      });
+     // Keep the result and its action buttons available while the user reviews them.
+     function reconcileFilter(){
+      if(work.isConnected&&!work.open&&!matchesWorkCheck(task,workCheck)){
+       draw();
+       workCheckSelect.focus();
+      }
+     }
+     work.addEventListener('toggle',reconcileFilter);
+     return work;
     }
     let details=workDetails();
     row.append(details);

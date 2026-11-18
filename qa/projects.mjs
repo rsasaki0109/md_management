@@ -67,6 +67,11 @@ try{
   await page.locator('#oss-open').click();
   const dialog=page.locator('#oss-dialog');
   await dialog.getByRole('button',{name:'横断タスク',exact:true}).click();
+  const checkFilter=dialog.getByLabel('照合結果で絞り込み',{exact:true});
+  await checkFilter.selectOption('unchecked');
+  assert.equal(await dialog.locator('.oss-task-row').count(),0);
+  await checkFilter.selectOption('needed');
+  assert.equal(await dialog.locator('.oss-task-row').count(),1);
   await dialog.getByLabel('横断タスクを検索',{exact:true}).fill('Issue #422');
   const row=dialog.locator('.oss-task-row'),details=row.locator('.task-work-details');
   assert.equal(await row.count(),1);
@@ -85,6 +90,11 @@ try{
   await complete.waitFor();
   assertWorkCheck(before,await state(),'aligned');
   assert.match(await row.locator('.oss-task-last-check').innerText(),/件数一致/);
+  await details.locator(':scope > summary').click();
+  await row.waitFor({state:'detached'});
+  await checkFilter.selectOption('aligned');
+  assert.equal(await row.count(),1);
+  await details.locator(':scope > summary').click();
   ledgerFail=true;
   const aligned=await state();
   await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();

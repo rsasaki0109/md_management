@@ -36,11 +36,17 @@ export function mergeRepositories(pages,repositories,createPage,excluded=[]){
 }
 export function filterProjects(pages,{query='',stage='all',priority='all'}={}){const q=query.trim().toLowerCase();const rank={high:0,medium:1,low:2};return pages.filter(p=>p.project&&(stage==='all'||p.project.stage===stage)&&(priority==='all'||p.project.priority===priority)&&[p.title,p.project.repository,p.project.description,p.project.nextAction].join(' ').toLowerCase().includes(q)).sort((a,b)=>rank[a.project.priority]-rank[b.project.priority]);}
 
-export function projectTasks(pages,{query='',deadline='all',priority='all',projectPriority='all',projectId='all',completion='open',today}={}){
+export function matchesWorkCheck(task,filter){
+ if(filter==='all')return true;
+ if(!task.context?.draft)return false;
+ return (task.workCheck?.status??'unchecked')===filter;
+}
+
+export function projectTasks(pages,{query='',deadline='all',priority='all',projectPriority='all',projectId='all',completion='open',workCheck='all',today}={}){
  const q=query.trim().toLowerCase(),rank={high:0,medium:1,low:2,none:3};
  const entries=pages.filter(p=>p.project&&(projectId==='all'||p.id===projectId)&&(projectPriority==='all'||p.project.priority===projectPriority)).flatMap(page=>(page.database?.rows||[]).filter(task=>(completion==='all'||(completion==='done'?task.status==='done':task.status!=='done'))&&(priority==='all'||task.priority===priority)&&[task.title,page.title,page.project.repository].join(' ').toLowerCase().includes(q)).map(task=>({page,task})));
  const visible=new Set(filterDeadlines(entries.map(e=>e.task),deadline,today));
- return entries.filter(e=>visible.has(e.task)).sort((a,b)=>(a.task.due||'9999-99-99').localeCompare(b.task.due||'9999-99-99')||(rank[a.task.priority]-rank[b.task.priority])||(rank[a.page.project.priority]-rank[b.page.project.priority]));
+ return entries.filter(e=>visible.has(e.task)&&matchesWorkCheck(e.task,workCheck)).sort((a,b)=>(a.task.due||'9999-99-99').localeCompare(b.task.due||'9999-99-99')||(rank[a.task.priority]-rank[b.task.priority])||(rank[a.page.project.priority]-rank[b.page.project.priority]));
 }
 
 export function addNextActionTask(page){
