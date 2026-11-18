@@ -1,3 +1,4 @@
+import {validateTaskContext} from './task-context.js';
 import {createDatabase,task} from './database.js';
 import {filterDeadlines} from './calendar.js';
 export const projectStages={idea:'未整理',active:'開発中',maintain:'保守中',paused:'保留'};
@@ -5,6 +6,7 @@ export const projectPriorities={high:'高',medium:'中',low:'低'};
 export function validRepository(value){return typeof value==='string'&&!['.','..'].includes(value.split('/')[1])&&/^[a-z\d](?:[a-z\d-]{0,38})\/[a-z\d_.-]+$/i.test(value);}
 export function validateProject(p){
  if(!p||!validRepository(p.repository)||typeof p.description!=='string'||typeof p.language!=='string'||!Number.isInteger(p.stars)||p.stars<0||!Number.isInteger(p.openIssues)||p.openIssues<0||!(p.pushedAt===null||(typeof p.pushedAt==='string'&&!Number.isNaN(Date.parse(p.pushedAt))))||typeof p.syncedAt!=='string'||Number.isNaN(Date.parse(p.syncedAt))||!Object.hasOwn(projectStages,p.stage)||!Object.hasOwn(projectPriorities,p.priority)||typeof p.nextAction!=='string')throw Error('OSS プロジェクトの形式が正しくありません');
+ if(p.nextActionContext!==undefined){validateTaskContext(p.nextActionContext);if(p.nextActionContext.action!==p.nextAction)throw Error('次の一手と作業の根拠が一致しません');}
  return p;
 }
 export function repositorySnapshot(repo,now=new Date().toISOString()){
@@ -27,7 +29,7 @@ export function mergeRepositories(pages,repositories,createPage,excluded=[]){
  const snapshots=repositories.map(p=>validateProject(p));
  for(const snapshot of snapshots){const key=snapshot.repository.toLowerCase();if(seen.has(key)||blocked.has(key)){skipped++;continue;}seen.add(key);
   const existing=pages.find(p=>p.project?.repository.toLowerCase()===key);
-  if(existing){existing.project={...snapshot,stage:existing.project.stage,priority:existing.project.priority,nextAction:existing.project.nextAction};updated++;}
+  if(existing){existing.project={...snapshot,stage:existing.project.stage,priority:existing.project.priority,nextAction:existing.project.nextAction,...(existing.project.nextActionContext?{nextActionContext:structuredClone(existing.project.nextActionContext)}:{})};updated++;}
   else{const p=createPage(snapshot);p.project=structuredClone(snapshot);pages.push(p);created++;}
  }
  return {created,updated,skipped};
@@ -43,8 +45,8 @@ export function projectTasks(pages,{query='',deadline='all',priority='all',proje
 
 export function addNextActionTask(page){
  const title=page.project?.nextAction.trim();if(!title)return null;
- const existing=page.database?.rows.find(row=>row.status!=='done'&&row.title.trim()===title);if(existing)return existing;
- const row={...task(),title,priority:page.project.priority};page.database??=createDatabase();page.database.rows.push(row);return row;
+ const existing=page.database?.rows.find(row=>row.status!=='done'&&row.title.trim()===title);if(existing){if(!existing.context&&page.project.nextActionContext)existing.context=structuredClone(page.project.nextActionContext);return existing;}
+ const row={...task(),title,priority:page.project.priority};page.database??=createDatabase();if(page.project.nextActionContext)row.context=structuredClone(page.project.nextActionContext);page.database.rows.push(row);return row;
 }
 
 export async function fetchProjectWork(repository,{fetcher=fetch,signal}={}){

@@ -1,6 +1,6 @@
-const CACHE='folia-shell-v0.1.1-issue-draft-1';
+const CACHE='folia-shell-v0.1.1-saved-work-1';
 const PREFIX='folia-shell-';
-const ASSETS=['/','/index.html','/manifest.webmanifest','/assets/icon-192.png','/assets/icon-512.png','/src/style.css','/src/app.js','/src/offline.js','/src/outline.js','/src/search.js','/src/editor.js','/src/model.js','/src/history.js','/src/links.js','/src/database.js','/src/database-ui.js','/src/calendar.js','/src/work-evidence.js','/src/projects.js','/src/projects-ui.js','/src/navigation.js','/src/reorder.js','/src/drag.js','/src/trash.js','/src/templates.js','/src/templates-ui.js'];
+const ASSETS=['/','/index.html','/manifest.webmanifest','/assets/icon-192.png','/assets/icon-512.png','/src/style.css','/src/app.js','/src/offline.js','/src/outline.js','/src/search.js','/src/editor.js','/src/model.js','/src/history.js','/src/links.js','/src/database.js','/src/database-ui.js','/src/calendar.js','/src/task-context.js','/src/work-details-ui.js','/src/work-evidence.js','/src/projects.js','/src/projects-ui.js','/src/navigation.js','/src/reorder.js','/src/drag.js','/src/trash.js','/src/templates.js','/src/templates-ui.js'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  try{const cache=await caches.open(CACHE);await cache.addAll(ASSETS);}catch(error){await caches.delete(CACHE);throw error;}
 })()));
