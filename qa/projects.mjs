@@ -3,12 +3,12 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const output=new URL('../artifacts/',import.meta.url).pathname;await mkdir(output,{recursive:true});
 const browser=await chromium.launch({...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),headless:true,args:['--no-sandbox']}),context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true,permissions:['clipboard-read','clipboard-write']}),page=await context.newPage(),results=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
-let stars=10,fail=false,workFail=false,evidenceMode=false,ledgerFail=false,liveProgress=0;
+let stars=10,fail=false,workFail=false,evidenceMode=false,ledgerFail=false,liveProgress=0,liveInstructions='Latest instructions retained';
 const repo=name=>({full_name:'rsasaki0109/'+name,description:'公開 OSS のテストデータ',language:'Rust',stargazers_count:stars,open_issues_count:2,pushed_at:'2026-11-17T00:00:00Z',owner:{login:'rsasaki0109'},fork:false,archived:false,private:false});
 await context.route('https://api.github.com/users/rsasaki0109/repos?**',route=>route.fulfill({status:fail?403:200,contentType:'application/json',body:JSON.stringify(fail?{message:'limit'}:[repo('lidar_slam_ros2'),repo('rust_robotics'),{...repo('fork'),fork:true}])}));
 await context.route('https://api.github.com/repos/rsasaki0109/*/issues?**',route=>route.fulfill({status:workFail?403:200,contentType:'application/json',body:JSON.stringify(workFail?{}:evidenceMode?[{number:422,title:'Help validate first map',state:'open',labels:[],body:'Current accepted progress: **0 / 3**.\n[ledger](https://github.com/rsasaki0109/lidar_slam_ros2/blob/develop/docs/evidence/external-first-map-validations.json)'}]:[{number:42,title:'起動時にクラッシュする',state:'open',labels:[{name:'bug'}],html_url:'javascript:invalid'},{number:43,title:'テスト追加',state:'open',labels:[],pull_request:{}}])}));
 await context.route('https://api.github.com/repos/rsasaki0109/lidar_slam_ros2/contents/**',route=>route.fulfill({status:ledgerFail?403:200,contentType:'application/json',body:JSON.stringify({required_validations:3,validations:[{id:'external-one',independent_attestation:true,result:'passed',issue_url:'https://github.com/rsasaki0109/lidar_slam_ros2/issues/576',acceptance:{status:'accepted'}}]})}));
-await context.route('https://api.github.com/repos/rsasaki0109/lidar_slam_ros2/issues/422',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({number:422,title:'Help validate first map',state:'open',body:'Current accepted progress: **'+liveProgress+' / 3**.\n[ledger](https://github.com/rsasaki0109/lidar_slam_ros2/blob/develop/docs/evidence/external-first-map-validations.json)\nLatest instructions retained'})}));
+await context.route('https://api.github.com/repos/rsasaki0109/lidar_slam_ros2/issues/422',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({number:422,title:'Help validate first map',state:'open',body:'Current accepted progress: **'+liveProgress+' / 3**.\n[ledger](https://github.com/rsasaki0109/lidar_slam_ros2/blob/develop/docs/evidence/external-first-map-validations.json)\n'+liveInstructions})}));
 const state=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('folia-workspace-v1')));
 async function step(name,fn){try{await fn();results.push({name,passed:true});console.log('PASS '+name);}catch(error){results.push({name,passed:false,error:error.message});await page.screenshot({path:output+'projects-failure.png',fullPage:true});throw error;}}
 try{
@@ -52,6 +52,34 @@ try{
  });
  await step('既存の未完了タスクへ重複を作らず作業の根拠を保存する',async()=>{const before=await state();const p=before.pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));const title=p.project.nextAction;const count=p.database.rows.length;await page.evaluate(title=>{const state=JSON.parse(localStorage.getItem('folia-workspace-v1'));const p=state.pages.find(p=>p.database?.rows.some(t=>t.title===title));delete p.database.rows.find(t=>t.title===title).context;localStorage.setItem('folia-workspace-v1',JSON.stringify(state));},title);await page.reload();await page.locator('.project-panel').waitFor();assert.equal(await page.locator('.project-panel .project-add-task').innerText(),'既存タスクに根拠を保存');await page.locator('.project-panel .project-add-task').click();const after=(await state()).pages.find(a=>a.id===p.id);assert.equal(after.database.rows.length,count);assert.ok(after.database.rows.find(t=>t.title===title).context.draft);});
  await step('保存した修正案を最新Issueから作り直し明示操作で更新する',async()=>{ledgerFail=false;const details=page.locator('.task-work-details').filter({hasText:'保存した作業: Issue #422'});await details.locator('summary').first().click();const before=await state();await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.task-work-details .task-work-check-status')?.textContent.includes('現在も本文と台帳に差'));assert.deepEqual(await state(),before);assert.ok((await details.locator('.task-work-check-result .project-draft-text').inputValue()).includes('Latest instructions retained'));await details.getByRole('button',{name:'最新の根拠・修正案で更新',exact:true}).click();const p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));const task=p.database.rows.find(t=>t.title.includes('Issue #422'));assert.ok(task.context.draft.updated.includes('Latest instructions retained'));assert.equal(task.status,'todo');await page.reload();await page.locator('.database').waitFor();});
- await step('最新本文と台帳の一致を確認しタスク完了を選択する',async()=>{liveProgress=1;const details=page.locator('.task-work-details').filter({hasText:'保存した作業: Issue #422'});await details.locator('summary').first().click();const before=await state();await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.task-work-check-status')?.textContent.includes('件数は一致'));assert.deepEqual(await state(),before);await details.getByRole('button',{name:'確認してタスクを完了',exact:true}).click();await page.reload();await page.locator('.database').waitFor();const p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));assert.equal(p.database.rows.find(t=>t.title.includes('Issue #422')).status,'done');});
+ await step('横断一覧で最新の根拠を保存し、照合後にタスクを完了する',async()=>{
+  await page.locator('#toggle-sidebar').click();
+  await page.locator('#oss-open').click();
+  const dialog=page.locator('#oss-dialog');
+  await dialog.getByRole('button',{name:'横断タスク',exact:true}).click();
+  await dialog.getByLabel('横断タスクを検索',{exact:true}).fill('Issue #422');
+  const row=dialog.locator('.oss-task-row'),details=row.locator('.task-work-details');
+  assert.equal(await row.count(),1);
+  liveInstructions='Instructions revised during review';
+  await details.locator(':scope > summary').click();
+  await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();
+  await details.getByRole('button',{name:'最新の根拠・修正案で更新',exact:true}).click();
+  assert.equal(await details.evaluate(n=>n.open),true);
+  assert.equal(await dialog.getByLabel('横断タスクを検索',{exact:true}).inputValue(),'Issue #422');
+  const saved=(await state()).pages.flatMap(p=>p.database?.rows||[]).find(t=>t.title.includes('Issue #422'));
+  assert.ok(saved.context.draft.updated.includes(liveInstructions));
+  liveProgress=1;
+  const before=await state();
+  await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();
+  const complete=details.getByRole('button',{name:'確認してタスクを完了',exact:true});
+  await complete.waitFor();
+  assert.deepEqual(await state(),before);
+  await complete.click();
+  assert.equal(await row.count(),0);
+  await page.reload();
+  await page.locator('.database').waitFor();
+  const p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));
+  assert.equal(p.database.rows.find(t=>t.title.includes('Issue #422')).status,'done');
+ });
  assert.deepEqual(errors,[]);
 }finally{await writeFile(output+'projects-results.json',JSON.stringify({results,errors},null,2));await browser.close();}

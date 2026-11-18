@@ -1,4 +1,4 @@
-import {issueDraft} from './work-details-ui.js';
+import {issueDraft,taskContextDetails} from './work-details-ui.js';
 import {contextFromCandidate} from './task-context.js';
 import {inspectWorkEvidence} from './work-evidence.js';
 import {priorities,statuses} from './database.js';
@@ -31,7 +31,42 @@ export function showProjects({dialog,getPages,onImport,onSave,onOpen,onTaskOpen}
  const taskFilters=el('div','oss-filters'),taskSearch=el('input');taskSearch.type='search';taskSearch.placeholder='タスク名・リポジトリを検索';taskSearch.setAttribute('aria-label','横断タスクを検索');taskSearch.oninput=()=>{taskQuery=taskSearch.value;draw();};
  taskFilters.append(taskSearch,select({open:'未完了',all:'すべて',done:'完了'},completion,'タスクの完了状態',value=>{completion=value;draw();}),select({all:'すべての期限',today:'今日',overdue:'期限切れ（未完了）',next7:'今後7日',undated:'期限未設定'},deadline,'横断タスクの期限',value=>{deadline=value;draw();}),select({all:'すべてのタスク優先度',...priorities},taskPriority,'横断タスクの優先度',value=>{taskPriority=value;draw();}),select({all:'すべてのプロジェクト優先度',...projectPriorities},focusPriority,'重点プロジェクト',value=>{focusPriority=value;draw();}));
  const projectSelect=select({all:'すべてのプロジェクト',...Object.fromEntries(getPages().filter(p=>p.project).map(p=>[p.id,p.title]))},projectId,'プロジェクトで絞り込み',value=>{projectId=value;draw();});taskFilters.append(projectSelect);dialog.insertBefore(taskFilters,count);
- function drawTasks(){const entries=projectTasks(getPages(),{query:taskQuery,deadline,priority:taskPriority,projectPriority:focusPriority,projectId,completion});count.textContent=entries.length+' タスク';if(!entries.length)list.append(el('p','empty',getPages().some(p=>p.project&&p.database?.rows.length)?'条件に一致するタスクはありません':'まだタスクがありません。各プロジェクトのページから追加してください。'));for(const {page,task} of entries){const row=el('article','oss-task-row'),done=el('input');done.type='checkbox';done.checked=task.status==='done';done.setAttribute('aria-label',(task.title||'無題のタスク')+' を完了');done.onchange=()=>{task.status=done.checked?'done':'todo';onSave(page);draw();};const info=el('div','oss-task-info');info.append(button(task.title||'無題のタスク',()=>{dialog.close();onTaskOpen(page.id,task.id);},'oss-task-open'),el('small','',page.project.repository));const properties=el('div','oss-task-properties');properties.append(el('span','',statuses[task.status]),el('span','',priorities[task.priority]),el('span','',task.due||'期限未設定'));row.append(done,info,properties);list.append(row);}}
+ function drawTasks(){
+  const entries=projectTasks(getPages(),{query:taskQuery,deadline,priority:taskPriority,projectPriority:focusPriority,projectId,completion});
+  count.textContent=entries.length+' タスク';
+  if(!entries.length)list.append(el('p','empty',getPages().some(p=>p.project&&p.database?.rows.length)?'条件に一致するタスクはありません':'まだタスクがありません。各プロジェクトのページから追加してください。'));
+  for(const {page,task} of entries){
+   const row=el('article','oss-task-row'),done=el('input');
+   done.type='checkbox';done.checked=task.status==='done';
+   done.setAttribute('aria-label',(task.title||'無題のタスク')+' を完了');
+   function setDone(value){task.status=value?'done':'todo';onSave(page);draw();taskSearch.focus();}
+   done.onchange=()=>setDone(done.checked);
+   const info=el('div','oss-task-info');
+   info.append(button(task.title||'無題のタスク',()=>{dialog.close();onTaskOpen(page.id,task.id);},'oss-task-open'),el('small','',page.project.repository));
+   const properties=el('div','oss-task-properties');
+   properties.append(el('span','',statuses[task.status]),el('span','',priorities[task.priority]),el('span','',task.due||'期限未設定'));
+   row.append(done,info,properties);
+   if(task.context){
+    function workDetails(){
+     return taskContextDetails(task.context,{
+      onUpdate(context){
+       task.context=context;
+       onSave(page);
+       const replacement=workDetails();
+       replacement.open=true;
+       details.replaceWith(replacement);
+       details=replacement;
+       details.querySelector('summary').focus();
+      },
+      onComplete:task.status==='done'?undefined:()=>setDone(true)
+     });
+    }
+    let details=workDetails();
+    row.append(details);
+   }
+   list.append(row);
+  }
+ }
  function draw(){const taskMode=mode==='tasks';toolbar.hidden=taskMode;message.hidden=taskMode;filters.hidden=taskMode;taskFilters.hidden=!taskMode;projectsButton.setAttribute('aria-pressed',String(!taskMode));tasksButton.setAttribute('aria-pressed',String(taskMode));list.className=taskMode?'oss-task-list':'oss-grid';list.replaceChildren();if(taskMode){drawTasks();return;}const pages=filterProjects(getPages(),{query,stage,priority});count.textContent=pages.length+' プロジェクト';list.replaceChildren();if(!pages.length)list.append(el('p','empty','プロジェクトがありません。GitHub から取り込んではじめましょう。'));for(const page of pages){const card=el('article','oss-card');card.append(button(page.icon+' '+page.title,()=>{dialog.close();onOpen(page.id);},'oss-open'),projectPanel(page,(group,record)=>{onSave(page,group,record);if(!group)draw();}));list.append(card);}}
  dialog.addEventListener('close',()=>controller?.abort(),{once:true});draw();dialog.showModal();
 }

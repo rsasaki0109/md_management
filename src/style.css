@@ -39,3 +39,6 @@ button:disabled{opacity:.3;cursor:default}button:disabled:hover{background:none}
 .task-work-details{font-size:11px;line-height:1.7;margin-top:10px;min-width:0;overflow-wrap:anywhere}.task-work-details summary{cursor:pointer;color:#5a724a}.task-work-details .project-evidence{display:block;margin-top:7px}.task-work-details p{white-space:normal}.task-work-row td{white-space:normal}.task-work-details .project-draft-text{min-width:0}
 
 .task-work-check,.task-work-update,.task-work-complete{font-size:11px;margin-top:10px;padding:8px;border:1px solid #dce5d3;border-radius:4px;background:#edf3e5}.task-work-check-status{font-size:11px;line-height:1.8}
+
+.oss-task-row:has(>.task-work-details){flex-wrap:wrap}
+.oss-task-row>.task-work-details{flex:1 0 100%;padding-inline:26px 5px;margin-top:0}
