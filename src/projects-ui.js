@@ -1,3 +1,4 @@
+import {savedWorkCheckLabel} from './task-context.js';
 import {issueDraft,taskContextDetails} from './work-details-ui.js';
 import {contextFromCandidate} from './task-context.js';
 import {inspectWorkEvidence} from './work-evidence.js';
@@ -47,8 +48,18 @@ export function showProjects({dialog,getPages,onImport,onSave,onOpen,onTaskOpen}
    properties.append(el('span','',statuses[task.status]),el('span','',priorities[task.priority]),el('span','',task.due||'期限未設定'));
    row.append(done,info,properties);
    if(task.context){
+    const lastCheck=el('span','oss-task-last-check',savedWorkCheckLabel(task.workCheck));
+    lastCheck.hidden=!task.workCheck;
+    properties.append(lastCheck);
     function workDetails(){
      return taskContextDetails(task.context,{
+      lastCheck:task.workCheck,
+      onChecked(record){
+       task.workCheck=record;
+       onSave(page);
+       lastCheck.textContent=savedWorkCheckLabel(record);
+       lastCheck.hidden=false;
+      },
       onUpdate(context){
        task.context=context;
        onSave(page);

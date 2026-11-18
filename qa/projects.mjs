@@ -10,6 +10,16 @@ await context.route('https://api.github.com/repos/rsasaki0109/*/issues?**',route
 await context.route('https://api.github.com/repos/rsasaki0109/lidar_slam_ros2/contents/**',route=>route.fulfill({status:ledgerFail?403:200,contentType:'application/json',body:JSON.stringify({required_validations:3,validations:[{id:'external-one',independent_attestation:true,result:'passed',issue_url:'https://github.com/rsasaki0109/lidar_slam_ros2/issues/576',acceptance:{status:'accepted'}}]})}));
 await context.route('https://api.github.com/repos/rsasaki0109/lidar_slam_ros2/issues/422',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({number:422,title:'Help validate first map',state:'open',body:'Current accepted progress: **'+liveProgress+' / 3**.\n[ledger](https://github.com/rsasaki0109/lidar_slam_ros2/blob/develop/docs/evidence/external-first-map-validations.json)\n'+liveInstructions})}));
 const state=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('folia-workspace-v1')));
+function assertWorkCheck(before,after,status){
+ const task=after.pages.flatMap(p=>p.database?.rows||[]).find(t=>t.title.includes('Issue #422'));
+ assert.equal(task.workCheck.status,status);
+ assert.ok(Number.isFinite(Date.parse(task.workCheck.checkedAt)));
+ const previous=before.pages.flatMap(p=>p.database?.rows||[]).find(t=>t.id===task.id);
+ if(previous.workCheck)task.workCheck=previous.workCheck;else delete task.workCheck;
+ for(const project of after.pages)project.updatedAt=before.pages.find(p=>p.id===project.id)?.updatedAt;
+ assert.deepEqual(after,before);
+}
+
 async function step(name,fn){try{await fn();results.push({name,passed:true});console.log('PASS '+name);}catch(error){results.push({name,passed:false,error:error.message});await page.screenshot({path:output+'projects-failure.png',fullPage:true});throw error;}}
 try{
  await page.goto(process.env.QA_URL||'http://127.0.0.1:3000');await page.locator('#page-title').waitFor();
@@ -51,7 +61,7 @@ try{
   await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>Boolean(navigator.serviceWorker.controller));await context.setOffline(true);await page.reload();await page.locator('.database').waitFor();const saved=page.locator('.task-work-details').filter({hasText:'保存した作業: Issue #422'});await saved.locator('summary').first().click();await saved.locator('.project-issue-draft summary').click();assert.equal(await saved.getByLabel('Issue #422 の修正文',{exact:true}).inputValue(),expected);await saved.getByRole('button',{name:'修正した本文をコピー',exact:true}).click();assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),expected);await context.setOffline(false);
  });
  await step('既存の未完了タスクへ重複を作らず作業の根拠を保存する',async()=>{const before=await state();const p=before.pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));const title=p.project.nextAction;const count=p.database.rows.length;await page.evaluate(title=>{const state=JSON.parse(localStorage.getItem('folia-workspace-v1'));const p=state.pages.find(p=>p.database?.rows.some(t=>t.title===title));delete p.database.rows.find(t=>t.title===title).context;localStorage.setItem('folia-workspace-v1',JSON.stringify(state));},title);await page.reload();await page.locator('.project-panel').waitFor();assert.equal(await page.locator('.project-panel .project-add-task').innerText(),'既存タスクに根拠を保存');await page.locator('.project-panel .project-add-task').click();const after=(await state()).pages.find(a=>a.id===p.id);assert.equal(after.database.rows.length,count);assert.ok(after.database.rows.find(t=>t.title===title).context.draft);});
- await step('保存した修正案を最新Issueから作り直し明示操作で更新する',async()=>{ledgerFail=false;const details=page.locator('.task-work-details').filter({hasText:'保存した作業: Issue #422'});await details.locator('summary').first().click();const before=await state();await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.task-work-details .task-work-check-status')?.textContent.includes('現在も本文と台帳に差'));assert.deepEqual(await state(),before);assert.ok((await details.locator('.task-work-check-result .project-draft-text').inputValue()).includes('Latest instructions retained'));await details.getByRole('button',{name:'最新の根拠・修正案で更新',exact:true}).click();const p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));const task=p.database.rows.find(t=>t.title.includes('Issue #422'));assert.ok(task.context.draft.updated.includes('Latest instructions retained'));assert.equal(task.status,'todo');await page.reload();await page.locator('.database').waitFor();});
+ await step('保存した修正案を最新Issueから作り直し明示操作で更新する',async()=>{ledgerFail=false;const details=page.locator('.task-work-details').filter({hasText:'保存した作業: Issue #422'});await details.locator('summary').first().click();const before=await state();await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.task-work-details .task-work-check-status')?.textContent.includes('現在も本文と台帳に差'));assertWorkCheck(before,await state(),'needed');assert.ok((await details.locator('.task-work-check-result .project-draft-text').inputValue()).includes('Latest instructions retained'));await details.getByRole('button',{name:'最新の根拠・修正案で更新',exact:true}).click();const p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));const task=p.database.rows.find(t=>t.title.includes('Issue #422'));assert.ok(task.context.draft.updated.includes('Latest instructions retained'));assert.equal(task.status,'todo');await page.reload();await page.locator('.database').waitFor();});
  await step('横断一覧で最新の根拠を保存し、照合後にタスクを完了する',async()=>{
   await page.locator('#toggle-sidebar').click();
   await page.locator('#oss-open').click();
@@ -73,13 +83,25 @@ try{
   await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();
   const complete=details.getByRole('button',{name:'確認してタスクを完了',exact:true});
   await complete.waitFor();
-  assert.deepEqual(await state(),before);
+  assertWorkCheck(before,await state(),'aligned');
+  assert.match(await row.locator('.oss-task-last-check').innerText(),/件数一致/);
+  ledgerFail=true;
+  const aligned=await state();
+  await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();
+  await details.getByText('台帳を取得・照合できませんでした',{exact:false}).waitFor();
+  assert.deepEqual(await state(),aligned);
+  assert.equal(await complete.count(),0);
+  ledgerFail=false;
+  await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();
   await complete.click();
   assert.equal(await row.count(),0);
   await page.reload();
   await page.locator('.database').waitFor();
   const p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));
-  assert.equal(p.database.rows.find(t=>t.title.includes('Issue #422')).status,'done');
+  const task=p.database.rows.find(t=>t.title.includes('Issue #422'));
+  assert.equal(task.status,'done');
+  assert.equal(task.workCheck.status,'aligned');
+  assert.match(await page.locator('.task-work-details').filter({hasText:'保存した作業: Issue #422'}).locator('.task-work-last-check').textContent(),/件数一致/);
  });
  assert.deepEqual(errors,[]);
 }finally{await writeFile(output+'projects-results.json',JSON.stringify({results,errors},null,2));await browser.close();}

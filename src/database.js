@@ -1,4 +1,4 @@
-import {validateTaskContext,taskContextMarkdown} from './task-context.js';
+import {validateTaskContext,taskContextMarkdown,validateSavedWorkCheck} from './task-context.js';
 export const statuses={todo:'未着手',doing:'進行中',done:'完了'};
 export const priorities={none:'なし',low:'低',medium:'中',high:'高'};
 export const createDatabase=()=>({view:'table',rows:[]});
@@ -13,6 +13,7 @@ export function validateDatabase(db){
  const ids=new Set();for(const row of db.rows){
   if(!row||typeof row.id!=='string'||!row.id||ids.has(row.id)||typeof row.title!=='string'||!Object.hasOwn(statuses,row.status)||!Object.hasOwn(priorities,row.priority)||typeof row.due!=='string'||!validDate(row.due))throw Error('タスクの形式が正しくありません');
   if(row.context!==undefined)validateTaskContext(row.context);
+  if(row.workCheck!==undefined)validateSavedWorkCheck(row.workCheck);
   ids.add(row.id);
  }
  return db;

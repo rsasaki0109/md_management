@@ -14,3 +14,12 @@ export function taskContextMarkdown(context){
  const links=[{label:context.source,url:context.url},...context.evidence].filter(e=>e.url).map(e=>'- ['+e.label.replace(/[\[\]\\]/g,'\\$&')+']('+e.url+')');
  return ['保存した作業: '+context.action,context.reason,'完了の目安: '+context.done,...links,...(context.draft?['Issue 本文の修正案:',fence(context.draft.updated)+'\n'+context.draft.updated+'\n'+fence(context.draft.updated)]:[])].join('\n\n');
 }
+
+const workCheckLabels={needed:'差分あり',aligned:'件数一致',closed:'Issue 終了'};
+export function savedWorkCheckLabel(check){
+ if(!check)return '';
+ return workCheckLabels[check.status]+' · '+new Date(check.checkedAt).toLocaleString('ja-JP');
+}
+export function validateSavedWorkCheck(check){
+ if(!check||!Object.hasOwn(workCheckLabels,check.status)||typeof check.checkedAt!=='string'||!Number.isFinite(Date.parse(check.checkedAt)))throw Error('照合記録の形式が正しくありません');
+}
