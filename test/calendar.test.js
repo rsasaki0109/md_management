@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {localToday,monthDays,monthCells,shiftMonth,tasksForDate,rescheduleTask} from '../src/calendar.js';
+import {localToday,monthDays,monthCells,shiftMonth,tasksForDate,rescheduleTask,filterDeadlines} from '../src/calendar.js';
 import {createDatabase,task,visibleTasks} from '../src/database.js';
 import {initial,validateBackup,toMarkdown,fromMarkdown} from '../src/model.js';
 import {History} from '../src/history.js';
@@ -39,3 +39,7 @@ test('calendar view and date edits survive history, JSON backup and Markdown val
  assert.equal(h.step(-1).value.pages[0].database.rows[0].due,'2026-11-15');assert.equal(h.step(-1).value.pages[0].database.view,'table');assert.equal(h.step(1).value.pages[0].database.view,'calendar');
  assert.equal(validateBackup(JSON.parse(JSON.stringify(state))).pages[0].database.view,'calendar');assert.equal(fromMarkdown(toMarkdown(p)).database.rows[0].due,'2026-12-01');assert.doesNotThrow(()=>validateBackup(initial()));
 });
+
+test('deadline filters distinguish today, unfinished overdue, next seven days and undated',()=>{const rows=[{id:'y',due:'2026-11-16',status:'todo'},{id:'done',due:'2026-11-16',status:'done'},{id:'today',due:'2026-11-17',status:'done'},{id:'last',due:'2026-11-23',status:'doing'},{id:'later',due:'2026-11-24',status:'todo'},{id:'none',due:'',status:'todo'}];const ids=filter=>filterDeadlines(rows,filter,'2026-11-17').map(r=>r.id);assert.deepEqual(ids('today'),['today']);assert.deepEqual(ids('overdue'),['y']);assert.deepEqual(ids('next7'),['today','last']);assert.deepEqual(ids('undated'),['none']);assert.deepEqual(ids('all'),rows.map(r=>r.id));});
+test('seven-day window crosses month, leap-day and year boundaries',()=>{for(const [today,last,outside] of [['2024-02-27','2024-03-04','2024-03-05'],['2026-12-29','2027-01-04','2027-01-05'],['9999-12-29','9999-12-31','']]){const rows=[{due:last,status:'todo'},{due:outside,status:'todo'}];assert.deepEqual(filterDeadlines(rows,'next7',today),[rows[0]]);}});
+test('deadline filtering preserves row identity and input ordering without mutating data',()=>{const rows=[{due:'2026-11-17',status:'todo'},{due:'',status:'doing'}],before=structuredClone(rows);assert.equal(filterDeadlines(rows,'today','2026-11-17')[0],rows[0]);assert.deepEqual(rows,before);assert.notEqual(filterDeadlines(rows),rows);assert.throws(()=>filterDeadlines(rows,'today','invalid'));});

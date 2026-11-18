@@ -1,0 +1,97 @@
+import {contextFromCandidate,savedWorkCheckLabel,workCheckLabels} from './task-context.js';
+import {issueDraft,taskContextDetails} from './work-details-ui.js';
+import {inspectWorkEvidence} from './work-evidence.js';
+import {priorities,statuses} from './database.js';
+import {projectStages,projectPriorities,filterProjects,fetchRepositories,projectTasks,matchesWorkCheck,addNextActionTask,fetchProjectWork,suggestProjectActions} from './projects.js';
+const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
+const button=(text,click,cls='')=>{const n=el('button',cls,text);n.type='button';n.onclick=click;return n;};
+function select(options,value,label,change){const n=el('select');n.setAttribute('aria-label',label);for(const [key,text] of Object.entries(options)){const o=el('option','',text);o.value=key;n.append(o);}n.value=value;n.onchange=()=>change(n.value);return n;}
+export function projectPanel(page,save){
+ const p=page.project,panel=el('section','project-panel');panel.setAttribute('aria-label','OSS プロジェクト情報');const link=el('a','project-repository',p.repository+' ↗');link.href='https://github.com/'+p.repository;link.target='_blank';link.rel='noopener noreferrer';panel.append(link,el('p','project-description',p.description));
+ const metrics=el('div','project-metrics');metrics.textContent=(p.language||'言語未設定')+' · ★ '+p.stars+' · Open issues / PR '+p.openIssues+(p.pushedAt?' · 最終 push '+new Date(p.pushedAt).toLocaleDateString('ja-JP'):'');panel.append(metrics);
+ const fields=el('div','project-fields');fields.append(select(projectStages,p.stage,'開発状況',value=>{p.stage=value;save();}),select(projectPriorities,p.priority,'プロジェクト優先度',value=>{p.priority=value;save();}));panel.append(fields);
+ const label=el('label','project-action-label','次の一手'),input=el('input','project-next-action');input.value=p.nextAction;input.placeholder='次に進める作業をひとつ';input.setAttribute('aria-label','次の一手');input.oninput=e=>{p.nextAction=input.value;if(p.nextActionContext?.action!==p.nextAction)delete p.nextActionContext;updateAdd();save('project:'+page.id,!e.isComposing);};input.oncompositionend=()=>save('project:'+page.id);label.append(input);panel.append(label);
+ const add=button('タスクに追加',()=>{if(addNextActionTask(page)){updateAdd();save();panel.dispatchEvent(new CustomEvent('project-task-updated',{bubbles:true}));}},'project-add-task');
+ function updateAdd(){const title=p.nextAction.trim(),exists=page.database?.rows.find(row=>row.status!=='done'&&row.title.trim()===title),attach=exists&&!exists.context&&p.nextActionContext;add.disabled=!title||Boolean(exists&&!attach);add.textContent=attach?'既存タスクに根拠を保存':exists?'未完了タスクに追加済み':'タスクに追加';}
+ updateAdd();panel.append(add);
+ const suggestions=el('div','project-suggestions'),notice=el('p','project-suggestion-notice'),candidates=el('div','project-candidates');notice.setAttribute('role','status');
+ function drawCandidates(items=[]){candidates.replaceChildren();for(const candidate of suggestProjectActions(page,items)){const card=el('article','project-candidate');card.append(el('p','project-candidate-action',candidate.action),el('p','',candidate.reason),el('p','','完了の目安: '+candidate.done));if(candidate.url){const source=el('a','',candidate.source+' ↗');source.href=candidate.url;source.target='_blank';source.rel='noopener noreferrer';card.append(source);}else card.append(el('small','',candidate.source));for(const evidence of candidate.evidence||[]){const link=el('a','project-evidence',evidence.label+' ↗');link.href=evidence.url;link.target='_blank';link.rel='noopener noreferrer';card.append(link);}if(candidate.draft)card.append(issueDraft(candidate));card.append(button('この作業を次の一手にする',()=>{p.nextAction=candidate.action;p.nextActionContext=contextFromCandidate(candidate);input.value=p.nextAction;updateAdd();save();},'project-use-suggestion'));candidates.append(card);}}
+ const propose=button('具体的な作業候補を出す',async()=>{propose.disabled=true;suggestions.hidden=false;drawCandidates();notice.textContent='GitHub の未解決 Issue・PR を取得しています…';try{const items=await fetchProjectWork(p.repository);if(!panel.isConnected)return;drawCandidates(items);notice.textContent='Issue 本文と検証台帳を照合しています…';const evidence=await inspectWorkEvidence(p.repository,items);if(!panel.isConnected)return;drawCandidates(evidence.items);notice.textContent='更新順で最大30件を取得。検証台帳 '+evidence.checked+' 件を照合。'+evidence.warnings.join('。');}catch(error){if(panel.isConnected)notice.textContent=error.message+'。ローカルの候補を表示しています。';}finally{propose.disabled=false;}},'project-propose');
+ suggestions.hidden=true;suggestions.append(notice,candidates);panel.append(propose,suggestions);
+ panel.append(el('small','project-sync','GitHub 取得: '+new Date(p.syncedAt).toLocaleString('ja-JP')));return panel;
+}
+export function showProjects({dialog,getPages,onImport,onSave,onOpen,onTaskOpen}){
+ let mode='projects',taskQuery='',deadline='all',taskPriority='all',focusPriority='all',projectId='all',completion='open',workCheck='all';
+ let query='',stage='all',priority='all',controller=null,busy=false;dialog.replaceChildren();dialog.setAttribute('aria-labelledby','oss-title');
+ const header=el('div','oss-header'),title=el('h2','','OSS プロジェクト');title.id='oss-title';header.append(title,button('閉じる',()=>dialog.close()));dialog.append(header,el('p','oss-intro','公開リポジトリを取り込み、状況・優先度・次の一手を整理します。GitHub の情報は手動取得時のスナップショットです。'));
+ const toolbar=el('div','oss-toolbar'),owner=el('input');owner.value='rsasaki0109';owner.setAttribute('aria-label','GitHub ユーザー名');owner.placeholder='GitHub ユーザー名';const message=el('p','oss-message');message.setAttribute('role','status');
+ const importButton=button('GitHub から取り込む',async()=>{if(busy)return;busy=true;importButton.disabled=true;owner.disabled=true;message.textContent='公開リポジトリを取得しています…';controller=new AbortController();try{const repos=await fetchRepositories(owner.value.trim(),{signal:controller.signal});if(!dialog.open)return;const result=onImport(repos);for(const option of Array.from(projectSelect.options).slice(1))option.remove();for(const p of getPages().filter(p=>p.project)){const option=el('option','',p.title);option.value=p.id;projectSelect.append(option);}message.textContent=result.created+' 件を追加、'+result.updated+' 件を更新、'+result.skipped+' 件をスキップしました';draw();}catch(error){if(error.name!=='AbortError')message.textContent=error.message;}finally{busy=false;importButton.disabled=false;owner.disabled=false;}},'primary');toolbar.append(owner,importButton);dialog.append(toolbar,message);
+ const filters=el('div','oss-filters'),search=el('input');search.type='search';search.placeholder='名前・説明・次の一手を検索';search.setAttribute('aria-label','OSS プロジェクトを検索');search.oninput=()=>{query=search.value;draw();};filters.append(search,select({all:'すべての状況',...projectStages},stage,'状況で絞り込み',value=>{stage=value;draw();}),select({all:'すべての優先度',...projectPriorities},priority,'優先度で絞り込み',value=>{priority=value;draw();}));const list=el('div','oss-grid'),count=el('p','oss-count');dialog.append(filters,count,list);
+ const tabs=el('div','oss-view-tabs'),projectsButton=button('プロジェクト',()=>{mode='projects';draw();}),tasksButton=button('横断タスク',()=>{mode='tasks';draw();});tabs.append(projectsButton,tasksButton);dialog.insertBefore(tabs,filters);
+ const taskFilters=el('div','oss-filters'),taskSearch=el('input');taskSearch.type='search';taskSearch.placeholder='タスク名・リポジトリを検索';taskSearch.setAttribute('aria-label','横断タスクを検索');taskSearch.oninput=()=>{taskQuery=taskSearch.value;draw();};
+ taskFilters.append(taskSearch,select({open:'未完了',all:'すべて',done:'完了'},completion,'タスクの完了状態',value=>{completion=value;draw();}),select({all:'すべての期限',today:'今日',overdue:'期限切れ（未完了）',next7:'今後7日',undated:'期限未設定'},deadline,'横断タスクの期限',value=>{deadline=value;draw();}),select({all:'すべてのタスク優先度',...priorities},taskPriority,'横断タスクの優先度',value=>{taskPriority=value;draw();}),select({all:'すべてのプロジェクト優先度',...projectPriorities},focusPriority,'重点プロジェクト',value=>{focusPriority=value;draw();}));
+ const workCheckSelect=select(
+  {all:'すべての照合状況',unchecked:'未照合',...workCheckLabels},workCheck,'照合結果で絞り込み',
+  value=>{workCheck=value;draw();}
+ );
+ taskFilters.append(workCheckSelect);
+ const projectSelect=select({all:'すべてのプロジェクト',...Object.fromEntries(getPages().filter(p=>p.project).map(p=>[p.id,p.title]))},projectId,'プロジェクトで絞り込み',value=>{projectId=value;draw();});taskFilters.append(projectSelect);dialog.insertBefore(taskFilters,count);
+ function drawTasks(){
+  const entries=projectTasks(getPages(),{query:taskQuery,deadline,priority:taskPriority,projectPriority:focusPriority,projectId,completion,workCheck});
+  count.textContent=entries.length+' タスク';
+  if(!entries.length)list.append(el('p','empty',getPages().some(p=>p.project&&p.database?.rows.length)?'条件に一致するタスクはありません':'まだタスクがありません。各プロジェクトのページから追加してください。'));
+  for(const {page,task} of entries){
+   const row=el('article','oss-task-row'),done=el('input');
+   done.type='checkbox';done.checked=task.status==='done';
+   done.setAttribute('aria-label',(task.title||'無題のタスク')+' を完了');
+   function setDone(value){task.status=value?'done':'todo';onSave(page);draw();taskSearch.focus();}
+   done.onchange=()=>setDone(done.checked);
+   const info=el('div','oss-task-info');
+   info.append(button(task.title||'無題のタスク',()=>{dialog.close();onTaskOpen(page.id,task.id);},'oss-task-open'),el('small','',page.project.repository));
+   const properties=el('div','oss-task-properties');
+   properties.append(el('span','',statuses[task.status]),el('span','',priorities[task.priority]),el('span','',task.due||'期限未設定'));
+   row.append(done,info,properties);
+   if(task.context){
+    const lastCheck=el('span','oss-task-last-check',task.workCheck?savedWorkCheckLabel(task.workCheck):'未照合');
+    lastCheck.hidden=!task.context.draft;
+    properties.append(lastCheck);
+    function workDetails(){
+     const work=taskContextDetails(task.context,{
+      lastCheck:task.workCheck,
+      onChecked(record){
+       task.workCheck=record;
+       onSave(page);
+       lastCheck.textContent=savedWorkCheckLabel(record);
+       lastCheck.hidden=false;
+       reconcileFilter();
+      },
+      onUpdate(context){
+       task.context=context;
+       onSave(page);
+       const replacement=workDetails();
+       replacement.open=true;
+       details.replaceWith(replacement);
+       details=replacement;
+       details.querySelector('summary').focus();
+      },
+      onComplete:task.status==='done'?undefined:()=>setDone(true)
+     });
+     // Keep the result and its action buttons available while the user reviews them.
+     function reconcileFilter(){
+      if(work.isConnected&&!work.open&&!matchesWorkCheck(task,workCheck)){
+       draw();
+       workCheckSelect.focus();
+      }
+     }
+     work.addEventListener('toggle',reconcileFilter);
+     return work;
+    }
+    let details=workDetails();
+    row.append(details);
+   }
+   list.append(row);
+  }
+ }
+ function draw(){const taskMode=mode==='tasks';toolbar.hidden=taskMode;message.hidden=taskMode;filters.hidden=taskMode;taskFilters.hidden=!taskMode;projectsButton.setAttribute('aria-pressed',String(!taskMode));tasksButton.setAttribute('aria-pressed',String(taskMode));list.className=taskMode?'oss-task-list':'oss-grid';list.replaceChildren();if(taskMode){drawTasks();return;}const pages=filterProjects(getPages(),{query,stage,priority});count.textContent=pages.length+' プロジェクト';list.replaceChildren();if(!pages.length)list.append(el('p','empty','プロジェクトがありません。GitHub から取り込んではじめましょう。'));for(const page of pages){const card=el('article','oss-card');card.append(button(page.icon+' '+page.title,()=>{dialog.close();onOpen(page.id);},'oss-open'),projectPanel(page,(group,record)=>{onSave(page,group,record);if(!group)draw();}));list.append(card);}}
+ dialog.addEventListener('close',()=>controller?.abort(),{once:true});draw();dialog.showModal();
+}

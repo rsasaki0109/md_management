@@ -7,7 +7,7 @@ const output=new URL('../artifacts/',import.meta.url).pathname;await mkdir(outpu
 const original=await readFile(new URL('../sw.js',import.meta.url),'utf8');let candidate=1,broken=false;
 const server=createServer((req,res)=>{
  if(new URL(req.url,'http://localhost').pathname==='/sw.js'){
-  let source=original.replace('folia-shell-v0.1.1','folia-shell-qa-'+candidate);
+  let source=original.replace('folia-shell-v0.1.1-work-check-filter-1','folia-shell-qa-'+candidate);
   if(broken)source=source.replace('const ASSETS=[',"const ASSETS=['/missing-update.js',");
   res.writeHead(200,{'Content-Type':'text/javascript','Cache-Control':'no-store'}).end(source);
  }else handleRequest(req,res);

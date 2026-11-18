@@ -1,0 +1,117 @@
+import assert from 'node:assert/strict';
+import {mkdir,readFile,writeFile} from 'node:fs/promises';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const output=new URL('../artifacts/',import.meta.url).pathname;await mkdir(output,{recursive:true});
+const browser=await chromium.launch({...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{}),headless:true,args:['--no-sandbox']}),context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true,permissions:['clipboard-read','clipboard-write']}),page=await context.newPage(),results=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
+let stars=10,fail=false,workFail=false,evidenceMode=false,ledgerFail=false,liveProgress=0,liveInstructions='Latest instructions retained';
+const repo=name=>({full_name:'rsasaki0109/'+name,description:'公開 OSS のテストデータ',language:'Rust',stargazers_count:stars,open_issues_count:2,pushed_at:'2026-11-17T00:00:00Z',owner:{login:'rsasaki0109'},fork:false,archived:false,private:false});
+await context.route('https://api.github.com/users/rsasaki0109/repos?**',route=>route.fulfill({status:fail?403:200,contentType:'application/json',body:JSON.stringify(fail?{message:'limit'}:[repo('lidar_slam_ros2'),repo('rust_robotics'),{...repo('fork'),fork:true}])}));
+await context.route('https://api.github.com/repos/rsasaki0109/*/issues?**',route=>route.fulfill({status:workFail?403:200,contentType:'application/json',body:JSON.stringify(workFail?{}:evidenceMode?[{number:422,title:'Help validate first map',state:'open',labels:[],body:'Current accepted progress: **0 / 3**.\n[ledger](https://github.com/rsasaki0109/lidar_slam_ros2/blob/develop/docs/evidence/external-first-map-validations.json)'}]:[{number:42,title:'起動時にクラッシュする',state:'open',labels:[{name:'bug'}],html_url:'javascript:invalid'},{number:43,title:'テスト追加',state:'open',labels:[],pull_request:{}}])}));
+await context.route('https://api.github.com/repos/rsasaki0109/lidar_slam_ros2/contents/**',route=>route.fulfill({status:ledgerFail?403:200,contentType:'application/json',body:JSON.stringify({required_validations:3,validations:[{id:'external-one',independent_attestation:true,result:'passed',issue_url:'https://github.com/rsasaki0109/lidar_slam_ros2/issues/576',acceptance:{status:'accepted'}}]})}));
+await context.route('https://api.github.com/repos/rsasaki0109/lidar_slam_ros2/issues/422',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({number:422,title:'Help validate first map',state:'open',body:'Current accepted progress: **'+liveProgress+' / 3**.\n[ledger](https://github.com/rsasaki0109/lidar_slam_ros2/blob/develop/docs/evidence/external-first-map-validations.json)\n'+liveInstructions})}));
+const state=()=>page.evaluate(()=>JSON.parse(localStorage.getItem('folia-workspace-v1')));
+function assertWorkCheck(before,after,status){
+ const task=after.pages.flatMap(p=>p.database?.rows||[]).find(t=>t.title.includes('Issue #422'));
+ assert.equal(task.workCheck.status,status);
+ assert.ok(Number.isFinite(Date.parse(task.workCheck.checkedAt)));
+ const previous=before.pages.flatMap(p=>p.database?.rows||[]).find(t=>t.id===task.id);
+ if(previous.workCheck)task.workCheck=previous.workCheck;else delete task.workCheck;
+ for(const project of after.pages)project.updatedAt=before.pages.find(p=>p.id===project.id)?.updatedAt;
+ assert.deepEqual(after,before);
+}
+
+async function step(name,fn){try{await fn();results.push({name,passed:true});console.log('PASS '+name);}catch(error){results.push({name,passed:false,error:error.message});await page.screenshot({path:output+'projects-failure.png',fullPage:true});throw error;}}
+try{
+ await page.goto(process.env.QA_URL||'http://127.0.0.1:3000');await page.locator('#page-title').waitFor();
+ await step('公開リポジトリをOSS一覧とページへ取り込む',async()=>{await page.locator('#oss-open').click();await page.getByRole('button',{name:'GitHub から取り込む',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.oss-count').textContent==='2 プロジェクト');assert.equal(await page.locator('.oss-card').count(),2);const projects=(await state()).pages.filter(p=>p.project);assert.equal(projects.length,2);assert.ok(projects.every(p=>p.database.view==='board'));});
+ await step('状況・優先度・次の一手を編集してメモと共に再読み込み',async()=>{let card=page.locator('.oss-card').filter({hasText:'lidar_slam_ros2'});await card.getByLabel('開発状況',{exact:true}).selectOption('active');await card.getByLabel('プロジェクト優先度',{exact:true}).selectOption('high');await card.getByLabel('次の一手',{exact:true}).fill('ROS 2 最新版で動作確認');await card.locator('.oss-open').click();assert.equal(await page.locator('#page-title').innerText(),'lidar_slam_ros2');await page.locator('.block-edit').first().fill('メンテナンスのメモ');await page.reload();await page.locator('.project-panel').waitFor();assert.equal(await page.getByLabel('次の一手',{exact:true}).inputValue(),'ROS 2 最新版で動作確認');assert.equal(await page.locator('.block-edit').first().innerText(),'メンテナンスのメモ');});
+ await step('再取り込みは統計だけ更新し手動計画とメモを維持',async()=>{const before=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));stars=66;await page.locator('#oss-open').click();await page.getByRole('button',{name:'GitHub から取り込む',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.oss-message').textContent.includes('2 件を更新'));const after=(await state()).pages.find(p=>p.id===before.id);assert.equal(after.project.stars,66);assert.equal(after.project.stage,'active');assert.equal(after.project.priority,'high');assert.equal(after.project.nextAction,before.project.nextAction);assert.deepEqual(after.blocks,before.blocks);assert.deepEqual(after.database,before.database);});
+ await step('OSS横断タスクの期限・優先度・完了と元の編集欄への移動',async()=>{
+  const today=await page.evaluate(()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');});
+  await page.locator('.oss-card').filter({hasText:'lidar_slam_ros2'}).locator('.oss-open').click();await page.locator('.db-add').click();await page.locator('.task-title').first().fill('今日の検証作業');await page.locator('.task-due').first().fill(today);await page.locator('.task-priority').first().selectOption('high');
+  await page.locator('#oss-open').click();await page.locator('.oss-card').filter({hasText:'rust_robotics'}).locator('.oss-open').click();await page.locator('.db-add').click();await page.locator('.task-title').first().fill('ドキュメント修正');
+  await page.locator('#oss-open').click();await page.getByRole('button',{name:'横断タスク',exact:true}).click();assert.equal(await page.locator('.oss-task-row').count(),2);await page.getByLabel('横断タスクの期限',{exact:true}).selectOption('today');assert.equal(await page.locator('.oss-task-row').count(),1);await page.getByLabel('横断タスクの優先度',{exact:true}).selectOption('high');assert.equal(await page.locator('.oss-task-row').count(),1);await page.getByLabel('重点プロジェクト',{exact:true}).selectOption('high');assert.equal(await page.locator('.oss-task-row').count(),1);
+  await page.locator('.oss-task-row input[type=checkbox]').click();assert.equal(await page.locator('.oss-task-row').count(),0);await page.getByLabel('タスクの完了状態',{exact:true}).selectOption('done');assert.equal(await page.locator('.oss-task-row').count(),1);await page.locator('.oss-task-open').click();assert.equal(await page.locator('#page-title').innerText(),'lidar_slam_ros2');await page.waitForFunction(()=>document.activeElement.value==='今日の検証作業');assert.equal(await page.locator('.task-status').first().inputValue(),'done');await page.reload();await page.locator('.project-panel').waitFor();assert.equal(await page.locator('.task-status').first().inputValue(),'done');await page.locator('#oss-open').click();
+ });
+ await step('検索・絞り込みと取得エラー時のデータ保持',async()=>{await page.getByLabel('OSS プロジェクトを検索',{exact:true}).fill('最新版');assert.equal(await page.locator('.oss-card').count(),1);await page.getByLabel('状況で絞り込み',{exact:true}).selectOption('paused');assert.equal(await page.locator('.oss-card').count(),0);const before=await state();fail=true;await page.getByRole('button',{name:'GitHub から取り込む',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.oss-message').textContent.includes('利用制限'));assert.deepEqual(await state(),before);});
+ await step('JSONバックアップと復元でOSS情報を保持',async()=>{await page.locator('.oss-header').getByRole('button',{name:'閉じる',exact:true}).click();await page.getByLabel('次の一手',{exact:true}).fill('再取得後の計画');assert.equal((await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2')).project.nextAction,'再取得後の計画');const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#backup').click()]);const path=output+'projects-backup.json';await download.saveAs(path);assert.equal(JSON.parse(await readFile(path,'utf8')).pages.filter(p=>p.project).length,2);await page.locator('#backup-file').setInputFiles(path);await page.locator('#action-confirm').click();await page.locator('.project-panel').waitFor();assert.equal(await page.getByLabel('開発状況',{exact:true}).inputValue(),'active');});
+ await step('モバイルでもOSS一覧を表示',async()=>{await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>document.querySelector('#sidebar').getBoundingClientRect().right<=1);await page.locator('#toggle-sidebar').click();await page.locator('#oss-open').click();await page.locator('#oss-dialog').waitFor();assert.equal(await page.locator('.oss-card').count(),2);await page.getByRole('button',{name:'横断タスク',exact:true}).click();assert.equal(await page.locator('.oss-task-row').count(),1);await page.getByLabel('タスクの完了状態',{exact:true}).selectOption('all');assert.equal(await page.locator('.oss-task-row').count(),2);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:output+'projects-mobile.png'});});
+ await step('次の一手をタスク化し重複を防いで横断一覧と元ページへ反映',async()=>{
+  await page.getByRole('button',{name:'プロジェクト',exact:true}).click();
+  const empty=page.locator('.oss-card').filter({hasText:'rust_robotics'});assert.equal(await empty.locator('.project-add-task').isDisabled(),true);
+  const card=page.locator('.oss-card').filter({hasText:'lidar_slam_ros2'});await card.locator('.project-add-task').click();assert.equal(await card.locator('.project-add-task').isDisabled(),true);assert.equal(await card.locator('.project-add-task').innerText(),'未完了タスクに追加済み');
+  let p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));assert.equal(p.project.nextAction,'再取得後の計画');assert.equal(p.database.rows.filter(t=>t.title==='再取得後の計画').length,1);assert.equal(p.database.rows.find(t=>t.title==='再取得後の計画').priority,'high');
+  await page.getByRole('button',{name:'横断タスク',exact:true}).click();await page.getByLabel('横断タスクを検索',{exact:true}).fill('再取得後の計画');assert.equal(await page.locator('.oss-task-row').count(),1);await page.locator('.oss-task-open').click();assert.equal(await page.locator('#page-title').innerText(),'lidar_slam_ros2');await page.waitForFunction(()=>document.activeElement.value==='再取得後の計画');await page.reload();await page.locator('.project-panel').waitFor();assert.equal(await page.locator('.project-panel .project-add-task').isDisabled(),true);p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));assert.equal(p.database.rows.filter(t=>t.title==='再取得後の計画').length,1);
+ });
+ await step('Issue・PRの具体的な候補から次の一手を選びタスク化する',async()=>{
+  const before=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2')).project.nextAction;
+  await page.locator('.project-panel .project-propose').click();await page.waitForFunction(()=>document.querySelector('.project-suggestion-notice').textContent.includes('最大30件'));assert.equal(await page.getByLabel('次の一手',{exact:true}).inputValue(),before);
+  const issue=page.locator('.project-candidate').filter({hasText:'Issue #42'});assert.ok((await issue.innerText()).includes('再現手順を実行'));assert.ok((await issue.innerText()).includes('完了の目安'));assert.equal(await issue.locator('a').getAttribute('href'),'https://github.com/rsasaki0109/lidar_slam_ros2/issues/42');assert.ok((await page.locator('.project-candidate').filter({hasText:'PR #43'}).innerText()).includes('差分とテスト結果'));
+  await issue.getByRole('button').click();assert.match(await page.getByLabel('次の一手',{exact:true}).inputValue(),/Issue #42.*再現手順/);await page.locator('.project-panel .project-add-task').click();await page.reload();await page.locator('.project-panel').waitFor();const p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));assert.ok(p.database.rows.some(t=>t.title.includes('Issue #42')));assert.match(p.project.nextAction,/Issue #42/);
+ });
+ await step('候補の取得失敗時も計画を保ちローカルの作業を表示する',async()=>{workFail=true;const before=await state();await page.locator('.project-panel .project-propose').click();await page.waitForFunction(()=>document.querySelector('.project-suggestion-notice').textContent.includes('利用制限'));assert.ok(await page.locator('.project-candidate').count()>0);assert.deepEqual(await state(),before);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:output+'project-suggestions-mobile.png'});});
+ await step('Issue本文と台帳の食い違いから具体的な進捗更新を提案する',async()=>{workFail=false;evidenceMode=true;const before=await state();await page.locator('.project-panel .project-propose').click();await page.waitForFunction(()=>document.querySelector('.project-suggestion-notice').textContent.includes('検証台帳 1 件を照合'));assert.deepEqual(await state(),before);const first=page.locator('.project-candidate').first();assert.match(await first.innerText(),/0\/3 → 1\/3.*残り2件/);assert.equal(await first.locator('.project-evidence').count(),2);assert.equal(await first.locator('.project-evidence').last().getAttribute('href'),'https://github.com/rsasaki0109/lidar_slam_ros2/issues/576');await first.locator('.project-issue-draft summary').click();const text=first.getByLabel('Issue #422 の修正文',{exact:true});const revised=await text.inputValue();assert.match(revised,/Current accepted progress: \*\*1 \/ 3\*\*/);assert.match(revised,/still needed: \*\*2\*\*/);await first.getByRole('button',{name:'修正した本文をコピー',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.project-draft-status').textContent.includes('コピーしました'));assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),revised);assert.deepEqual(await state(),before);
+  await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('denied');}}}));await first.getByRole('button',{name:'修正した本文をコピー',exact:true}).click();assert.match(await first.locator('.project-draft-status').innerText(),/手動でコピー/);assert.equal(await text.evaluate(n=>n.selectionEnd-n.selectionStart),revised.length);
+  await page.screenshot({path:output+'project-progress-evidence.png',fullPage:true});await first.getByRole('button',{name:'この作業を次の一手にする',exact:true}).click();await page.locator('.project-panel .project-add-task').click();await page.reload();await page.locator('.project-panel').waitFor();assert.match(await page.getByLabel('次の一手',{exact:true}).inputValue(),/Issue #422.*0\/3 → 1\/3/);const p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));assert.ok(p.database.rows.some(t=>t.title.includes('Issue #422')));});
+ await step('台帳の取得失敗は食い違いとして扱わず計画を保持する',async()=>{ledgerFail=true;const before=await state();await page.locator('.project-panel .project-propose').click();await page.waitForFunction(()=>document.querySelector('.project-suggestion-notice').textContent.includes('台帳を取得・照合できません'));assert.equal(await page.locator('.project-panel .project-evidence').count(),0);assert.deepEqual(await state(),before);});
+ await step('保存した作業の根拠と修正案を全ビュー・バックアップ・オフラインで開く',async()=>{
+  const card=page.locator('.db-card').filter({has:page.locator('input.task-title')}).filter({has:page.locator('.task-work-details')}).last();const details=card.locator('.task-work-details');await details.locator('summary').first().click();assert.ok((await details.innerText()).includes('Issue #422'));await details.locator('.project-issue-draft summary').click();const expected=await details.getByLabel('Issue #422 の修正文',{exact:true}).inputValue();assert.match(expected,/1 \/ 3/);assert.equal(await details.locator('.project-evidence').count(),3);
+  await page.getByRole('button',{name:'▤ テーブル',exact:true}).click();assert.ok(await page.locator('.task-work-row .task-work-details').count()>0);await page.getByRole('button',{name:'▦ カレンダー',exact:true}).click();await page.locator('.calendar-undated > summary').click();assert.ok(await page.locator('.calendar-undated .task-work-details').count()>0);
+  await page.locator('#toggle-sidebar').click();const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#backup').click()]);const path=output+'saved-work-backup.json';await download.saveAs(path);const backup=JSON.parse(await readFile(path,'utf8'));assert.ok(backup.pages.some(p=>p.database?.rows.some(t=>t.context?.draft?.updated===expected)));await page.locator('#backup-file').setInputFiles(path);await page.locator('#action-confirm').click();await page.locator('.database').waitFor();await page.getByRole('button',{name:'▤ テーブル',exact:true}).click();
+  await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>Boolean(navigator.serviceWorker.controller));await context.setOffline(true);await page.reload();await page.locator('.database').waitFor();const saved=page.locator('.task-work-details').filter({hasText:'保存した作業: Issue #422'});await saved.locator('summary').first().click();await saved.locator('.project-issue-draft summary').click();assert.equal(await saved.getByLabel('Issue #422 の修正文',{exact:true}).inputValue(),expected);await saved.getByRole('button',{name:'修正した本文をコピー',exact:true}).click();assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),expected);await context.setOffline(false);
+ });
+ await step('既存の未完了タスクへ重複を作らず作業の根拠を保存する',async()=>{const before=await state();const p=before.pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));const title=p.project.nextAction;const count=p.database.rows.length;await page.evaluate(title=>{const state=JSON.parse(localStorage.getItem('folia-workspace-v1'));const p=state.pages.find(p=>p.database?.rows.some(t=>t.title===title));delete p.database.rows.find(t=>t.title===title).context;localStorage.setItem('folia-workspace-v1',JSON.stringify(state));},title);await page.reload();await page.locator('.project-panel').waitFor();assert.equal(await page.locator('.project-panel .project-add-task').innerText(),'既存タスクに根拠を保存');await page.locator('.project-panel .project-add-task').click();const after=(await state()).pages.find(a=>a.id===p.id);assert.equal(after.database.rows.length,count);assert.ok(after.database.rows.find(t=>t.title===title).context.draft);});
+ await step('保存した修正案を最新Issueから作り直し明示操作で更新する',async()=>{ledgerFail=false;const details=page.locator('.task-work-details').filter({hasText:'保存した作業: Issue #422'});await details.locator('summary').first().click();const before=await state();await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.task-work-details .task-work-check-status')?.textContent.includes('現在も本文と台帳に差'));assertWorkCheck(before,await state(),'needed');assert.ok((await details.locator('.task-work-check-result .project-draft-text').inputValue()).includes('Latest instructions retained'));await details.getByRole('button',{name:'最新の根拠・修正案で更新',exact:true}).click();const p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));const task=p.database.rows.find(t=>t.title.includes('Issue #422'));assert.ok(task.context.draft.updated.includes('Latest instructions retained'));assert.equal(task.status,'todo');await page.reload();await page.locator('.database').waitFor();});
+ await step('横断一覧で最新の根拠を保存し、照合後にタスクを完了する',async()=>{
+  await page.locator('#toggle-sidebar').click();
+  await page.locator('#oss-open').click();
+  const dialog=page.locator('#oss-dialog');
+  await dialog.getByRole('button',{name:'横断タスク',exact:true}).click();
+  const checkFilter=dialog.getByLabel('照合結果で絞り込み',{exact:true});
+  await checkFilter.selectOption('unchecked');
+  assert.equal(await dialog.locator('.oss-task-row').count(),0);
+  await checkFilter.selectOption('needed');
+  assert.equal(await dialog.locator('.oss-task-row').count(),1);
+  await dialog.getByLabel('横断タスクを検索',{exact:true}).fill('Issue #422');
+  const row=dialog.locator('.oss-task-row'),details=row.locator('.task-work-details');
+  assert.equal(await row.count(),1);
+  liveInstructions='Instructions revised during review';
+  await details.locator(':scope > summary').click();
+  await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();
+  await details.getByRole('button',{name:'最新の根拠・修正案で更新',exact:true}).click();
+  assert.equal(await details.evaluate(n=>n.open),true);
+  assert.equal(await dialog.getByLabel('横断タスクを検索',{exact:true}).inputValue(),'Issue #422');
+  const saved=(await state()).pages.flatMap(p=>p.database?.rows||[]).find(t=>t.title.includes('Issue #422'));
+  assert.ok(saved.context.draft.updated.includes(liveInstructions));
+  liveProgress=1;
+  const before=await state();
+  await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();
+  const complete=details.getByRole('button',{name:'確認してタスクを完了',exact:true});
+  await complete.waitFor();
+  assertWorkCheck(before,await state(),'aligned');
+  assert.match(await row.locator('.oss-task-last-check').innerText(),/件数一致/);
+  await details.locator(':scope > summary').click();
+  await row.waitFor({state:'detached'});
+  await checkFilter.selectOption('aligned');
+  assert.equal(await row.count(),1);
+  await details.locator(':scope > summary').click();
+  ledgerFail=true;
+  const aligned=await state();
+  await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();
+  await details.getByText('台帳を取得・照合できませんでした',{exact:false}).waitFor();
+  assert.deepEqual(await state(),aligned);
+  assert.equal(await complete.count(),0);
+  ledgerFail=false;
+  await details.getByRole('button',{name:'最新の Issue と照合',exact:true}).click();
+  await complete.click();
+  assert.equal(await row.count(),0);
+  await page.reload();
+  await page.locator('.database').waitFor();
+  const p=(await state()).pages.find(p=>p.project?.repository.endsWith('/lidar_slam_ros2'));
+  const task=p.database.rows.find(t=>t.title.includes('Issue #422'));
+  assert.equal(task.status,'done');
+  assert.equal(task.workCheck.status,'aligned');
+  assert.match(await page.locator('.task-work-details').filter({hasText:'保存した作業: Issue #422'}).locator('.task-work-last-check').textContent(),/件数一致/);
+ });
+ assert.deepEqual(errors,[]);
+}finally{await writeFile(output+'projects-results.json',JSON.stringify({results,errors},null,2));await browser.close();}

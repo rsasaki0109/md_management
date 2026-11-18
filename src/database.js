@@ -1,3 +1,4 @@
+import {validateTaskContext,taskContextMarkdown,validateSavedWorkCheck} from './task-context.js';
 export const statuses={todo:'未着手',doing:'進行中',done:'完了'};
 export const priorities={none:'なし',low:'低',medium:'中',high:'高'};
 export const createDatabase=()=>({view:'table',rows:[]});
@@ -11,6 +12,8 @@ export function validateDatabase(db){
  if(!db||!['table','board','calendar'].includes(db.view)||!Array.isArray(db.rows))throw Error('データベースの形式が正しくありません');
  const ids=new Set();for(const row of db.rows){
   if(!row||typeof row.id!=='string'||!row.id||ids.has(row.id)||typeof row.title!=='string'||!Object.hasOwn(statuses,row.status)||!Object.hasOwn(priorities,row.priority)||typeof row.due!=='string'||!validDate(row.due))throw Error('タスクの形式が正しくありません');
+  if(row.context!==undefined)validateTaskContext(row.context);
+  if(row.workCheck!==undefined)validateSavedWorkCheck(row.workCheck);
   ids.add(row.id);
  }
  return db;
@@ -25,7 +28,7 @@ export function databaseSearch(db){return db?.rows.map(r=>[r.title,statuses[r.st
 const escapeCell=s=>s.replace(/&/g,'&amp;').replace(/\|/g,'&#124;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\r\n?|\n/g,'<br>').replace(/\t/g,'&#9;').replace(/^ +| +$/g,s=>'&#32;'.repeat(s.length));
 const unescapeCell=s=>s.replace(/<br>/g,'\n').replace(/&amp;|&#124;|&#32;|&#9;|&lt;|&gt;/g,s=>({'&amp;':'&','&#124;':'|','&#32;':' ','&#9;':'\t','&lt;':'<','&gt;':'>'}[s]));
 export const databaseHeader='| Task | Status | Priority | Due |';
-export function databaseMarkdown(db){return [databaseHeader,'| --- | --- | --- | --- |',...db.rows.map(r=>'| '+[r.title,statuses[r.status],priorities[r.priority],r.due].map(escapeCell).join(' | ')+' |')].join('\n');}
+export function databaseMarkdown(db){return [databaseHeader,'| --- | --- | --- | --- |',...db.rows.map(r=>'| '+[r.title,statuses[r.status],priorities[r.priority],r.due].map(escapeCell).join(' | ')+' |')].join('\n')+db.rows.filter(r=>r.context).map(r=>'\n\n### '+r.title.replace(/[\r\n]/g,' ')+' — 作業の根拠\n\n'+taskContextMarkdown(r.context)).join('');}
 export function parseDatabaseTable(lines,start){
  if(lines[start]!==databaseHeader||lines[start+1]!=='| --- | --- | --- | --- |')return null;
  const db=createDatabase();let end=start+2;
